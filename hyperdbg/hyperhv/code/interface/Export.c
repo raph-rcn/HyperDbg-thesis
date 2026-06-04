@@ -150,6 +150,62 @@ VmFuncSetPmcVmexit(BOOLEAN Set)
 }
 
 /**
+ * @brief Query descriptor-table exiting support
+ *
+ * @return BOOLEAN
+ */
+BOOLEAN
+VmFuncHdecDescriptorTableExitingSupported()
+{
+    return HvIsDescriptorTableExitingSupported();
+}
+
+/**
+ * @brief Configure private HDEC descriptor-table detector metadata
+ *
+ * @param Enable Whether to enable the detector filter
+ * @param ProcessId Target process id
+ * @param ProcessCr3 Target process CR3
+ * @param ProcessName Target process image name
+ * @param SampleId Caller supplied sample id
+ * @return VOID
+ */
+VOID
+VmFuncHdecSetDescriptorTableDetectorState(BOOLEAN Enable,
+                                          UINT32  ProcessId,
+                                          UINT64  ProcessCr3,
+                                          CHAR *  ProcessName,
+                                          CHAR *  SampleId)
+{
+    g_HdecDescriptorTableState.Enabled = FALSE;
+    RtlZeroMemory(&g_HdecDescriptorTableState, sizeof(g_HdecDescriptorTableState));
+
+    if (!Enable)
+    {
+        return;
+    }
+
+    g_HdecDescriptorTableState.ProcessId = ProcessId;
+    g_HdecDescriptorTableState.ProcessCr3 = ProcessCr3 & ~0xfffULL;
+
+    if (ProcessName != NULL)
+    {
+        RtlStringCbCopyA(g_HdecDescriptorTableState.ProcessName,
+                         sizeof(g_HdecDescriptorTableState.ProcessName),
+                         ProcessName);
+    }
+
+    if (SampleId != NULL)
+    {
+        RtlStringCbCopyA(g_HdecDescriptorTableState.SampleId,
+                         sizeof(g_HdecDescriptorTableState.SampleId),
+                         SampleId);
+    }
+
+    g_HdecDescriptorTableState.Enabled = TRUE;
+}
+
+/**
  * @brief Set vm-exit for mov-to-cr0/4
  * @details Should be called in vmx-root
  *

@@ -301,6 +301,9 @@
     <ClCompile Include="code\debugger\commands\extension-commands\hide.cpp">
       <Filter>code\debugger\commands\extension-commands</Filter>
     </ClCompile>
+    <ClCompile Include="code\debugger\commands\extension-commands\hdecdesc.cpp">
+      <Filter>code\debugger\commands\extension-commands</Filter>
+    </ClCompile>
     <ClCompile Include="code\debugger\commands\extension-commands\interrupt.cpp">
       <Filter>code\debugger\commands\extension-commands</Filter>
     </ClCompile>

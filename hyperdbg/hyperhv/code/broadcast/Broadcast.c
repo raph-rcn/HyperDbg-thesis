@@ -273,6 +273,32 @@ BroadcastDisableRdpmcExitingAllCores()
 }
 
 /**
+ * @brief routines for enabling descriptor-table exiting
+ * @return VOID
+ */
+VOID
+BroadcastEnableDescriptorTableExitingOnAllProcessors()
+{
+    //
+    // Broadcast to all cores
+    //
+    KeGenericCallDpc(DpcRoutineEnableDescriptorTableExitingAllCores, NULL);
+}
+
+/**
+ * @brief routines for disabling descriptor-table exiting
+ * @return VOID
+ */
+VOID
+BroadcastDisableDescriptorTableExitingOnAllProcessors()
+{
+    //
+    // Broadcast to all cores
+    //
+    KeGenericCallDpc(DpcRoutineDisableDescriptorTableExitingAllCores, NULL);
+}
+
+/**
  * @brief routines for !exception command which
  * @details causes vm-exit when exception occurred
  * @param ExceptionIndex index of exception on IDT

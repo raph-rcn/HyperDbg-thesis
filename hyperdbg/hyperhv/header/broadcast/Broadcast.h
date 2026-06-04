@@ -34,6 +34,12 @@ VOID
 BroadcastDisablePmlOnAllProcessors();
 
 VOID
+BroadcastEnableDescriptorTableExitingOnAllProcessors();
+
+VOID
+BroadcastDisableDescriptorTableExitingOnAllProcessors();
+
+VOID
 BroadcastChangeToMbecSupportedEptpOnAllProcessors();
 
 VOID

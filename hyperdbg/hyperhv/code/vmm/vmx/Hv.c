@@ -717,6 +717,61 @@ HvSetModeBasedExecutionEnableFlag(BOOLEAN Set)
 }
 
 /**
+ * @brief Query whether descriptor-table exiting is supported by VMX controls
+ *
+ * @return BOOLEAN
+ */
+BOOLEAN
+HvIsDescriptorTableExitingSupported()
+{
+    UINT32 AdjustedControls;
+
+    AdjustedControls = HvAdjustControls(IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG,
+                                        IA32_VMX_PROCBASED_CTLS2);
+
+    return (AdjustedControls & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) != 0;
+}
+
+/**
+ * @brief Set descriptor-table exiting on the current core
+ *
+ * @param VCpu The virtual processor's state
+ * @param Set Set or unset the VM-exits
+ *
+ * @return BOOLEAN TRUE if the requested control state was applied
+ */
+BOOLEAN
+HvSetDescriptorTableExiting(VIRTUAL_MACHINE_STATE * VCpu, BOOLEAN Set)
+{
+    UINT32 AdjSecCtrl;
+    UINT32 SecondaryProcBasedVmExecControls = 0;
+
+    UNREFERENCED_PARAMETER(VCpu);
+
+    VmxVmread32P(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &SecondaryProcBasedVmExecControls);
+
+    if (Set)
+    {
+        SecondaryProcBasedVmExecControls |= IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG;
+    }
+    else
+    {
+        SecondaryProcBasedVmExecControls &= ~IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG;
+    }
+
+    AdjSecCtrl = HvAdjustControls(SecondaryProcBasedVmExecControls, IA32_VMX_PROCBASED_CTLS2);
+
+    VmxVmwrite64(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, AdjSecCtrl);
+
+    if (Set)
+    {
+        return (AdjSecCtrl & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) != 0;
+    }
+
+    return (AdjSecCtrl & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) == 0;
+}
+
+/**
  * @brief Set NMI-window exiting
  *
  * @param Set Set or unset the NMI-window exiting

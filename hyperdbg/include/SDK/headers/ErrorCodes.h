@@ -611,6 +611,18 @@
  */
 #define DEBUGGER_ERROR_LBR_NOT_SUPPORTED 0xc000005e
 
+/**
+ * @brief error, descriptor-table exiting is not supported by the processor or nested hypervisor
+ *
+ */
+#define DEBUGGER_ERROR_HDEC_DESCRIPTOR_TABLE_EXITING_NOT_SUPPORTED 0xc000005f
+
+/**
+ * @brief error, the requested HDEC descriptor-table target process was not found
+ *
+ */
+#define DEBUGGER_ERROR_HDEC_DESCRIPTOR_TABLE_PROCESS_NOT_FOUND 0xc0000060
+
 //
 // WHEN YOU ADD ANYTHING TO THIS LIST OF ERRORS, THEN
 // MAKE SURE TO ADD AN ERROR MESSAGE TO ShowErrorMessage(UINT32 Error)

@@ -321,6 +321,18 @@
  */
 #define VMCALL_WRITE_PHYSICAL_MEMORY 0x00000031
 
+/**
+ * @brief VMCALL to enable descriptor-table exiting
+ *
+ */
+#define VMCALL_SET_DESCRIPTOR_TABLE_EXITING 0x00000032
+
+/**
+ * @brief VMCALL to disable descriptor-table exiting
+ *
+ */
+#define VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING 0x00000033
+
 //////////////////////////////////////////////////
 //				    Functions					//
 //////////////////////////////////////////////////

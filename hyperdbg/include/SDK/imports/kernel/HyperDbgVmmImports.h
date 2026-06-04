@@ -59,6 +59,16 @@ VmFuncSetSaveDebugControls(BOOLEAN Set);
 IMPORT_EXPORT_VMM VOID
 VmFuncSetPmcVmexit(BOOLEAN Set);
 
+IMPORT_EXPORT_VMM BOOLEAN
+VmFuncHdecDescriptorTableExitingSupported();
+
+IMPORT_EXPORT_VMM VOID
+VmFuncHdecSetDescriptorTableDetectorState(BOOLEAN Enable,
+                                          UINT32  ProcessId,
+                                          UINT64  ProcessCr3,
+                                          CHAR *  ProcessName,
+                                          CHAR *  SampleId);
+
 IMPORT_EXPORT_VMM VOID
 VmFuncSetMovControlRegsExiting(BOOLEAN Set, UINT64 ControlRegister, UINT64 MaskRegister);
 
@@ -244,6 +254,12 @@ ConfigureEnableMovToCr3ExitingOnAllProcessors();
 
 IMPORT_EXPORT_VMM VOID
 ConfigureDisableMovToCr3ExitingOnAllProcessors();
+
+IMPORT_EXPORT_VMM VOID
+ConfigureEnableDescriptorTableExitingOnAllProcessors();
+
+IMPORT_EXPORT_VMM VOID
+ConfigureDisableDescriptorTableExitingOnAllProcessors();
 
 IMPORT_EXPORT_VMM VOID
 ConfigureEnableEferSyscallEventsOnAllProcessors();

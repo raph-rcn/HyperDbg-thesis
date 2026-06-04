@@ -33,6 +33,29 @@ MtfHandleVmexit(VIRTUAL_MACHINE_STATE * VCpu)
     VCpu->IgnoreMtfUnset = FALSE;
 
     //
+    // Re-enable descriptor-table exiting after private HDEC transparent pass-through.
+    //
+    if (VCpu->HdecDescriptorTableRestoreOnMtf)
+    {
+        VCpu->HdecDescriptorTableRestoreOnMtf = FALSE;
+
+        if (g_HdecDescriptorTableState.Enabled)
+        {
+            HvSetDescriptorTableExiting(VCpu, TRUE);
+        }
+
+        //
+        // Check for re-enabling external interrupts
+        //
+        HvEnableAndCheckForPreviousExternalInterrupts(VCpu);
+
+        //
+        // MTF is handled
+        //
+        IsMtfHandled = TRUE;
+    }
+
+    //
     // Check if we need to re-apply a breakpoint or not
     // We check it separately because the guest might step
     // instructions on an MTF so we want to check for the step too

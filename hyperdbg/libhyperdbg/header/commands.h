@@ -340,6 +340,8 @@ typedef std::map<std::string, COMMAND_DETAIL> CommandType;
 
 #define DEBUGGER_COMMAND_MONITOR_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_EVENT
 
+#define DEBUGGER_COMMAND_HDECDESC_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_LOCAL_COMMAND_IN_DEBUGGER_MODE
+
 #define DEBUGGER_COMMAND_VMCALL_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_EVENT
 
 #define DEBUGGER_COMMAND_EPTHOOK_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_EVENT
@@ -528,6 +530,9 @@ CommandPte(vector<CommandToken> CommandTokens, string Command);
 
 VOID
 CommandMonitor(vector<CommandToken> CommandTokens, string Command);
+
+VOID
+CommandHdecDesc(vector<CommandToken> CommandTokens, string Command);
 
 VOID
 CommandSyscallAndSysret(vector<CommandToken> CommandTokens, string Command);

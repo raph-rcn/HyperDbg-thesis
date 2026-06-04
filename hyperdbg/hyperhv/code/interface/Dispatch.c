@@ -14,6 +14,182 @@
 #include "pch.h"
 
 /**
+ * @brief Escape a small ASCII field for JSON logging
+ *
+ * @param Destination
+ * @param DestinationSize
+ * @param Source
+ * @return VOID
+ */
+static VOID
+HdecDescriptorTableCopyJsonEscaped(CHAR * Destination, UINT32 DestinationSize, const CHAR * Source)
+{
+    UINT32 ReadIndex  = 0;
+    UINT32 WriteIndex = 0;
+
+    if (Destination == NULL || DestinationSize == 0)
+    {
+        return;
+    }
+
+    Destination[0] = '\0';
+
+    if (Source == NULL)
+    {
+        return;
+    }
+
+    while (Source[ReadIndex] != '\0' && WriteIndex < DestinationSize - 1)
+    {
+        CHAR CurrentChar = Source[ReadIndex++];
+
+        if (CurrentChar == '"' || CurrentChar == '\\')
+        {
+            if (WriteIndex + 2 >= DestinationSize)
+            {
+                break;
+            }
+
+            Destination[WriteIndex++] = '\\';
+            Destination[WriteIndex++] = CurrentChar;
+        }
+        else if ((UCHAR)CurrentChar < 0x20)
+        {
+            Destination[WriteIndex++] = '_';
+        }
+        else
+        {
+            Destination[WriteIndex++] = CurrentChar;
+        }
+    }
+
+    Destination[WriteIndex] = '\0';
+}
+
+/**
+ * @brief Decode the descriptor-table instruction class from bytes at guest RIP
+ *
+ * @param InstructionBytes
+ * @param InstructionBytesLength
+ * @return CHAR* NULL for load variants or unknown encodings
+ */
+static CHAR *
+HdecDescriptorTableDecodeInstruction(UCHAR * InstructionBytes, UINT32 InstructionBytesLength)
+{
+    UINT32 Index = 0;
+    UCHAR  Opcode;
+    UCHAR  ModRm;
+    UCHAR  Reg;
+
+    if (InstructionBytes == NULL || InstructionBytesLength < 3)
+    {
+        return NULL;
+    }
+
+    while (Index < InstructionBytesLength)
+    {
+        UCHAR CurrentByte = InstructionBytes[Index];
+
+        if (CurrentByte == 0x66 || CurrentByte == 0x67 ||
+            CurrentByte == 0xf2 || CurrentByte == 0xf3 ||
+            CurrentByte == 0x2e || CurrentByte == 0x36 ||
+            CurrentByte == 0x3e || CurrentByte == 0x26 ||
+            CurrentByte == 0x64 || CurrentByte == 0x65 ||
+            CurrentByte == 0xf0 ||
+            (CurrentByte >= 0x40 && CurrentByte <= 0x4f))
+        {
+            Index++;
+            continue;
+        }
+
+        break;
+    }
+
+    if (Index + 2 >= InstructionBytesLength || InstructionBytes[Index] != 0x0f)
+    {
+        return NULL;
+    }
+
+    Opcode = InstructionBytes[Index + 1];
+    ModRm  = InstructionBytes[Index + 2];
+    Reg    = (ModRm >> 3) & 0x7;
+
+    if (Opcode == 0x01)
+    {
+        if (((ModRm >> 6) & 0x3) == 0x3 && (Reg == 0 || Reg == 1))
+        {
+            return NULL;
+        }
+
+        if (Reg == 0)
+        {
+            return "sgdt";
+        }
+        else if (Reg == 1)
+        {
+            return "sidt";
+        }
+    }
+    else if (Opcode == 0x00)
+    {
+        if (Reg == 0)
+        {
+            return "sldt";
+        }
+        else if (Reg == 1)
+        {
+            return "str";
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Emit a JSONL descriptor-table telemetry record
+ *
+ * @param VCpu
+ * @param ExitReason
+ * @param GuestCr3
+ * @param InstructionName
+ * @return VOID
+ */
+static VOID
+HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UINT64 GuestCr3, CHAR * InstructionName)
+{
+    CHAR ProcessName[HDEC_DESCRIPTOR_TABLE_PROCESS_NAME_MAX * 2] = {0};
+    CHAR SampleId[HDEC_DESCRIPTOR_TABLE_SAMPLE_ID_MAX * 2]       = {0};
+
+    HdecDescriptorTableCopyJsonEscaped(ProcessName,
+                                       sizeof(ProcessName),
+                                       g_HdecDescriptorTableState.ProcessName);
+
+    HdecDescriptorTableCopyJsonEscaped(SampleId,
+                                       sizeof(SampleId),
+                                       g_HdecDescriptorTableState.SampleId);
+
+    Log("{\"source\":\"hyperdbg_descriptor_table_exit\","
+        "\"event_type\":\"descriptor_table_instruction\","
+        "\"instruction\":\"%s\","
+        "\"rip\":\"0x%llx\","
+        "\"pid\":%u,"
+        "\"cr3\":\"0x%llx\","
+        "\"process_name\":\"%s\","
+        "\"sample_id\":\"%s\","
+        "\"exit_reason\":%u,"
+        "\"module_name\":\"\","
+        "\"module_base\":\"0x0\","
+        "\"module_size\":0}\n",
+        InstructionName,
+        VCpu->LastVmexitRip,
+        g_HdecDescriptorTableState.ProcessId,
+        GuestCr3,
+        ProcessName,
+        SampleId,
+        ExitReason);
+}
+
+/**
  * @brief Handling debugger functions related to SYSRET events
  *
  * @param CoreIndex Current core's index
@@ -696,6 +872,56 @@ DispatchEventRdpmc(VIRTUAL_MACHINE_STATE * VCpu)
                                  NULL,
                                  VCpu->Regs);
     }
+}
+
+/**
+ * @brief Handling descriptor-table exiting for the private HDEC detector
+ *
+ * @param VCpu The virtual processor's state
+ * @param ExitReason VM-exit reason
+ * @return VOID
+ */
+VOID
+DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason)
+{
+    CR3_TYPE GuestCr3       = {0};
+    UINT64   GuestCr3Masked = 0;
+
+    GuestCr3       = LayoutGetExactGuestProcessCr3();
+    GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
+
+    if (g_HdecDescriptorTableState.Enabled &&
+        GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3)
+    {
+        UCHAR  InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
+        CHAR * InstructionName                      = NULL;
+
+        if (MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
+                                                      InstructionBytes,
+                                                      MAXIMUM_INSTR_SIZE))
+        {
+            InstructionName = HdecDescriptorTableDecodeInstruction(InstructionBytes,
+                                                                   MAXIMUM_INSTR_SIZE);
+
+            if (InstructionName != NULL)
+            {
+                HdecDescriptorTableLogEvent(VCpu,
+                                            ExitReason,
+                                            GuestCr3Masked,
+                                            InstructionName);
+            }
+        }
+    }
+
+    //
+    // The descriptor-table instruction has not executed yet. Temporarily
+    // disable the control on this core, let one guest instruction run, and
+    // re-enable it from the MTF handler.
+    //
+    VCpu->HdecDescriptorTableRestoreOnMtf = TRUE;
+    HvSetDescriptorTableExiting(VCpu, FALSE);
+    HvEnableMtfAndChangeExternalInterruptState(VCpu);
+    HvSuppressRipIncrement(VCpu);
 }
 
 /**

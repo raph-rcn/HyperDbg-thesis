@@ -61,6 +61,9 @@ VOID
 CommandMonitorHelp();
 
 VOID
+CommandHdecDescHelp();
+
+VOID
 CommandSyscallHelp();
 
 VOID

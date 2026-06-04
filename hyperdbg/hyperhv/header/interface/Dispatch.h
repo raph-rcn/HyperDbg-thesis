@@ -53,6 +53,9 @@ VOID
 DispatchEventRdpmc(VIRTUAL_MACHINE_STATE * VCpu);
 
 VOID
+DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason);
+
+VOID
 DispatchEventMovToFromControlRegisters(VIRTUAL_MACHINE_STATE * VCpu);
 
 VOID

@@ -294,6 +294,16 @@ VmxVmexitHandler(_Inout_ PGUEST_REGS GuestRegs)
 
         break;
     }
+    case VMX_EXIT_REASON_GDTR_IDTR_ACCESS:
+    case VMX_EXIT_REASON_LDTR_TR_ACCESS:
+    {
+        //
+        // Handle descriptor-table exiting transparently with MTF pass-through
+        //
+        DispatchEventDescriptorTableAccess(VCpu, ExitReason);
+
+        break;
+    }
     case VMX_EXIT_REASON_MOV_DR:
     {
         //

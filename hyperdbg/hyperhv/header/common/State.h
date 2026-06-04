@@ -318,6 +318,7 @@ typedef struct _VIRTUAL_MACHINE_STATE
     BOOLEAN          EnableExternalInterruptsOnContinueMtf;                         // Whether to enable external interrupts on the continue state of MTF or not
     BOOLEAN          RegisterBreakOnMtf;                                            // Registered Break in the case of MTFs (used in instrumentation step-in)
     BOOLEAN          IgnoreOneMtf;                                                  // Ignore (mark as handled) for one MTF
+    BOOLEAN          HdecDescriptorTableRestoreOnMtf;                               // Re-enable descriptor-table exiting after transparent MTF pass-through
     BOOLEAN          NotNormalEptp;                                                 // Indicate that the target processor is on the normal EPTP or not
     BOOLEAN          MbecEnabled;                                                   // Indicate that the target processor is on MBEC-enabled mode or not
     PUINT64          PmlBufferAddress;                                              // Address of buffer used for dirty logging

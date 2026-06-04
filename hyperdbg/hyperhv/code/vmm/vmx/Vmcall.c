@@ -534,6 +534,32 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
 
         break;
     }
+    case VMCALL_SET_DESCRIPTOR_TABLE_EXITING:
+    {
+        if (HvSetDescriptorTableExiting(VCpu, TRUE))
+        {
+            VmcallStatus = STATUS_SUCCESS;
+        }
+        else
+        {
+            VmcallStatus = STATUS_NOT_SUPPORTED;
+        }
+
+        break;
+    }
+    case VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING:
+    {
+        if (HvSetDescriptorTableExiting(VCpu, FALSE))
+        {
+            VmcallStatus = STATUS_SUCCESS;
+        }
+        else
+        {
+            VmcallStatus = STATUS_UNSUCCESSFUL;
+        }
+
+        break;
+    }
     default:
     {
         LogError("Err, unsupported VMCALL");

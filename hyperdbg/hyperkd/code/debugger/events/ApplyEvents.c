@@ -27,6 +27,7 @@ ApplyEventMonitorEvent(PDEBUGGER_EVENT                   Event,
                        PDEBUGGER_EVENT_AND_ACTION_RESULT ResultsToReturn,
                        BOOLEAN                           InputFromVmxRoot)
 {
+    static UINT32 HdecApplyMonitorTraceCount = 0;
     UINT32                                       TempProcessId;
     BOOLEAN                                      ResultOfApplyingEvent = FALSE;
     UINT64                                       RemainingSize;
@@ -187,9 +188,35 @@ ApplyEventMonitorEvent(PDEBUGGER_EVENT                   Event,
         //
         // Apply the hook
         //
+        if (HdecApplyMonitorTraceCount < 32)
+        {
+            HdecApplyMonitorTraceCount++;
+            LogInfo("[HDEC] apply_monitor count=%u tag=%llx event_type=%u pid=%x start=%llx end=%llx mem_type=%u r=%u w=%u x=%u vmxroot=%u",
+                    HdecApplyMonitorTraceCount,
+                    Event->Tag,
+                    Event->EventType,
+                    TempProcessId,
+                    HookingAddresses.StartAddress,
+                    HookingAddresses.EndAddress,
+                    HookingAddresses.MemoryType,
+                    HookingAddresses.SetHookForRead,
+                    HookingAddresses.SetHookForWrite,
+                    HookingAddresses.SetHookForExec,
+                    InputFromVmxRoot);
+        }
+
         ResultOfApplyingEvent = DebuggerEventEnableMonitorReadWriteExec(&HookingAddresses,
                                                                         TempProcessId,
                                                                         InputFromVmxRoot);
+
+        if (HdecApplyMonitorTraceCount < 32)
+        {
+            HdecApplyMonitorTraceCount++;
+            LogInfo("[HDEC] apply_monitor_result count=%u tag=%llx result=%u",
+                    HdecApplyMonitorTraceCount,
+                    Event->Tag,
+                    ResultOfApplyingEvent);
+        }
 
         if (!ResultOfApplyingEvent)
         {

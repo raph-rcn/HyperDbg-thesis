@@ -216,6 +216,24 @@ VOID
 HvSetModeBasedExecutionEnableFlag(BOOLEAN Set);
 
 /**
+ * @brief Query support for descriptor-table exiting
+ *
+ * @return BOOLEAN
+ */
+BOOLEAN
+HvIsDescriptorTableExitingSupported();
+
+/**
+ * @brief Set descriptor-table exiting on the current core
+ *
+ * @param VCpu
+ * @param Set
+ * @return BOOLEAN
+ */
+BOOLEAN
+HvSetDescriptorTableExiting(VIRTUAL_MACHINE_STATE * VCpu, BOOLEAN Set);
+
+/**
  * @brief Set NMI-window exiting
  *
  * @param Set

@@ -115,6 +115,28 @@ ConfigureDirtyLoggingUninitializeOnAllProcessors()
 }
 
 /**
+ * @brief routines for enabling descriptor-table exiting on all cores
+ *
+ * @return VOID
+ */
+VOID
+ConfigureEnableDescriptorTableExitingOnAllProcessors()
+{
+    BroadcastEnableDescriptorTableExitingOnAllProcessors();
+}
+
+/**
+ * @brief routines for disabling descriptor-table exiting on all cores
+ *
+ * @return VOID
+ */
+VOID
+ConfigureDisableDescriptorTableExitingOnAllProcessors()
+{
+    BroadcastDisableDescriptorTableExitingOnAllProcessors();
+}
+
+/**
  * @brief routines for debugging threads (disable mov-to-cr3 exiting)
  *
  * @return VOID

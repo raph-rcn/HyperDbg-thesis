@@ -12,6 +12,43 @@
 #pragma once
 #include "Pcie.h"
 
+#define HDEC_DESCRIPTOR_TABLE_SAMPLE_ID_MAX     64
+#define HDEC_DESCRIPTOR_TABLE_PROCESS_NAME_MAX 16
+
+#define SIZEOF_HDEC_DESCRIPTOR_TABLE_REQUEST \
+    sizeof(HDEC_DESCRIPTOR_TABLE_REQUEST)
+
+typedef enum _HDEC_DESCRIPTOR_TABLE_REQUEST_TYPE
+{
+    HDEC_DESCRIPTOR_TABLE_REQUEST_DISABLE = 0,
+    HDEC_DESCRIPTOR_TABLE_REQUEST_ENABLE,
+    HDEC_DESCRIPTOR_TABLE_REQUEST_QUERY,
+} HDEC_DESCRIPTOR_TABLE_REQUEST_TYPE;
+
+typedef struct _HDEC_DESCRIPTOR_TABLE_REQUEST
+{
+    HDEC_DESCRIPTOR_TABLE_REQUEST_TYPE RequestType;
+    UINT32                             ProcessId;
+    UINT64                             ProcessCr3;
+    CHAR                               ProcessName[HDEC_DESCRIPTOR_TABLE_PROCESS_NAME_MAX];
+    CHAR                               SampleId[HDEC_DESCRIPTOR_TABLE_SAMPLE_ID_MAX];
+    UINT32                             KernelStatus;
+
+} HDEC_DESCRIPTOR_TABLE_REQUEST, *PHDEC_DESCRIPTOR_TABLE_REQUEST;
+
+typedef struct _HDEC_DESCRIPTOR_TABLE_DETECTOR_STATE
+{
+    volatile BOOLEAN Enabled;
+    UINT32           ProcessId;
+    UINT64           ProcessCr3;
+    CHAR             ProcessName[HDEC_DESCRIPTOR_TABLE_PROCESS_NAME_MAX];
+    CHAR             SampleId[HDEC_DESCRIPTOR_TABLE_SAMPLE_ID_MAX];
+
+} HDEC_DESCRIPTOR_TABLE_DETECTOR_STATE, *PHDEC_DESCRIPTOR_TABLE_DETECTOR_STATE;
+
+/* ==============================================================================================
+ */
+
 #define SIZEOF_DEBUGGER_READ_PAGE_TABLE_ENTRIES_DETAILS \
     sizeof(DEBUGGER_READ_PAGE_TABLE_ENTRIES_DETAILS)
 
