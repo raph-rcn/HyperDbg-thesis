@@ -744,11 +744,17 @@ BOOLEAN
 HvSetDescriptorTableExiting(VIRTUAL_MACHINE_STATE * VCpu, BOOLEAN Set)
 {
     UINT32 AdjSecCtrl;
-    UINT32 SecondaryProcBasedVmExecControls = 0;
+    UINT32 SecondaryProcBasedVmExecControls  = 0;
+    UINT32 ReadBackSecondaryProcBasedControls = 0;
+    UCHAR  VmreadBeforeStatus;
+    UCHAR  VmwriteStatus;
+    UCHAR  VmreadAfterStatus;
+    BOOLEAN RequestedBitApplied;
 
     UNREFERENCED_PARAMETER(VCpu);
 
-    VmxVmread32P(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &SecondaryProcBasedVmExecControls);
+    VmreadBeforeStatus = VmxVmread32P(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS,
+                                      &SecondaryProcBasedVmExecControls);
 
     if (Set)
     {
@@ -761,14 +767,25 @@ HvSetDescriptorTableExiting(VIRTUAL_MACHINE_STATE * VCpu, BOOLEAN Set)
 
     AdjSecCtrl = HvAdjustControls(SecondaryProcBasedVmExecControls, IA32_VMX_PROCBASED_CTLS2);
 
-    VmxVmwrite64(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, AdjSecCtrl);
+    VmwriteStatus = VmxVmwrite32(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, AdjSecCtrl);
+    VmreadAfterStatus = VmxVmread32P(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS,
+                                     &ReadBackSecondaryProcBasedControls);
 
     if (Set)
     {
-        return (AdjSecCtrl & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) != 0;
+        RequestedBitApplied =
+            (ReadBackSecondaryProcBasedControls & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) != 0;
+    }
+    else
+    {
+        RequestedBitApplied =
+            (ReadBackSecondaryProcBasedControls & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) == 0;
     }
 
-    return (AdjSecCtrl & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) == 0;
+    return VmreadBeforeStatus == 0 &&
+           VmwriteStatus == 0 &&
+           VmreadAfterStatus == 0 &&
+           RequestedBitApplied;
 }
 
 /**

@@ -155,7 +155,7 @@ HdecDescriptorTableDecodeInstruction(UCHAR * InstructionBytes, UINT32 Instructio
  * @return VOID
  */
 static VOID
-HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UINT64 GuestCr3, CHAR * InstructionName)
+HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UINT64 GuestCr3, CHAR * Source, CHAR * InstructionName)
 {
     CHAR ProcessName[HDEC_DESCRIPTOR_TABLE_PROCESS_NAME_MAX * 2] = {0};
     CHAR SampleId[HDEC_DESCRIPTOR_TABLE_SAMPLE_ID_MAX * 2]       = {0};
@@ -168,7 +168,7 @@ HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UIN
                                        sizeof(SampleId),
                                        g_HdecDescriptorTableState.SampleId);
 
-    Log("{\"source\":\"hyperdbg_descriptor_table_exit\","
+    Log("{\"source\":\"%s\","
         "\"event_type\":\"descriptor_table_instruction\","
         "\"instruction\":\"%s\","
         "\"rip\":\"0x%llx\","
@@ -180,6 +180,7 @@ HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UIN
         "\"module_name\":\"\","
         "\"module_base\":\"0x0\","
         "\"module_size\":0}\n",
+        Source,
         InstructionName,
         VCpu->LastVmexitRip,
         g_HdecDescriptorTableState.ProcessId,
@@ -187,6 +188,70 @@ HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UIN
         ProcessName,
         SampleId,
         ExitReason);
+}
+
+/**
+ * @brief Observe #GP faults that may represent blocked user-mode descriptor instructions
+ *
+ * @param VCpu
+ * @param InterruptExit
+ * @return VOID
+ */
+static VOID
+HdecDescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_INFORMATION InterruptExit)
+{
+    CR3_TYPE GuestCr3                    = {0};
+    UINT64   GuestCr3Masked              = 0;
+    UINT32   CurrentProcessId;
+    BOOLEAN  HdecDescriptorProcessMatch  = FALSE;
+    UCHAR    InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
+    CHAR *   InstructionName                      = NULL;
+
+    if (!g_HdecDescriptorTableState.Enabled ||
+        InterruptExit.Vector != EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)
+    {
+        return;
+    }
+
+    //
+    // #GP is a fault. If HyperDbg re-injects it after the VM-exit, the guest
+    // must see the original faulting RIP, not the next instruction.
+    //
+    HvSuppressRipIncrement(VCpu);
+
+    GuestCr3       = LayoutGetExactGuestProcessCr3();
+    GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
+    CurrentProcessId = (UINT32)(ULONG_PTR)PsGetCurrentProcessId();
+
+    HdecDescriptorProcessMatch =
+        (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
+         CurrentProcessId == g_HdecDescriptorTableState.ProcessId);
+
+    if (!HdecDescriptorProcessMatch)
+    {
+        return;
+    }
+
+    if (!MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
+                                                  InstructionBytes,
+                                                  MAXIMUM_INSTR_SIZE))
+    {
+        return;
+    }
+
+    InstructionName = HdecDescriptorTableDecodeInstruction(InstructionBytes,
+                                                           MAXIMUM_INSTR_SIZE);
+
+    if (InstructionName == NULL)
+    {
+        return;
+    }
+
+    HdecDescriptorTableLogEvent(VCpu,
+                                InterruptExit.Vector,
+                                GuestCr3Masked,
+                                "hyperdbg_descriptor_table_gp_fault",
+                                InstructionName);
 }
 
 /**
@@ -884,14 +949,20 @@ DispatchEventRdpmc(VIRTUAL_MACHINE_STATE * VCpu)
 VOID
 DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason)
 {
-    CR3_TYPE GuestCr3       = {0};
-    UINT64   GuestCr3Masked = 0;
+    CR3_TYPE GuestCr3                    = {0};
+    UINT64   GuestCr3Masked              = 0;
+    UINT32   CurrentProcessId;
+    BOOLEAN  HdecDescriptorProcessMatch  = FALSE;
 
     GuestCr3       = LayoutGetExactGuestProcessCr3();
     GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
+    CurrentProcessId = (UINT32)(ULONG_PTR)PsGetCurrentProcessId();
 
-    if (g_HdecDescriptorTableState.Enabled &&
-        GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3)
+    HdecDescriptorProcessMatch =
+        (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
+         CurrentProcessId == g_HdecDescriptorTableState.ProcessId);
+
+    if (g_HdecDescriptorTableState.Enabled && HdecDescriptorProcessMatch)
     {
         UCHAR  InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
         CHAR * InstructionName                      = NULL;
@@ -908,6 +979,7 @@ DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReas
                 HdecDescriptorTableLogEvent(VCpu,
                                             ExitReason,
                                             GuestCr3Masked,
+                                            "hyperdbg_descriptor_table_exit",
                                             InstructionName);
             }
         }
@@ -1062,6 +1134,8 @@ DispatchEventException(VIRTUAL_MACHINE_STATE * VCpu)
     // read the exit interruption information
     //
     VmxVmread32P(VMCS_VMEXIT_INTERRUPTION_INFORMATION, &InterruptExit.AsUInt);
+
+    HdecDescriptorTableHandleException(VCpu, InterruptExit);
 
     //
     // This type of vm-exit, can be either because of an !exception event,

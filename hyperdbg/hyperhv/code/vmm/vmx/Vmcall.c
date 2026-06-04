@@ -536,9 +536,17 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
     }
     case VMCALL_SET_DESCRIPTOR_TABLE_EXITING:
     {
+        UINT32 ExceptionBitmapAfter = 0;
+
         if (HvSetDescriptorTableExiting(VCpu, TRUE))
         {
-            VmcallStatus = STATUS_SUCCESS;
+            HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
+            ExceptionBitmapAfter = HvReadExceptionBitmap();
+
+            VmcallStatus =
+                (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0 ?
+                    STATUS_SUCCESS :
+                    STATUS_UNSUCCESSFUL;
         }
         else
         {
@@ -549,9 +557,17 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
     }
     case VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING:
     {
+        UINT32 ExceptionBitmapAfter = 0;
+
         if (HvSetDescriptorTableExiting(VCpu, FALSE))
         {
-            VmcallStatus = STATUS_SUCCESS;
+            HvUnsetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
+            ExceptionBitmapAfter = HvReadExceptionBitmap();
+
+            VmcallStatus =
+                (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) == 0 ?
+                    STATUS_SUCCESS :
+                    STATUS_UNSUCCESSFUL;
         }
         else
         {
