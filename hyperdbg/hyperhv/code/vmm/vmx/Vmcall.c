@@ -614,26 +614,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
 
         UmipApplied = HdecDescriptorTableForceGuestUmip(VCpu);
 
-        if (g_HdecDescriptorTableState.Enabled)
-        {
-            InterlockedIncrement64(&g_HdecDescriptorTableState.EnableVmcallCount);
-
-            if (DescriptorTableApplied)
-            {
-                InterlockedIncrement64(&g_HdecDescriptorTableState.EnableDescriptorAppliedCount);
-            }
-
-            if (GeneralProtectionApplied)
-            {
-                InterlockedIncrement64(&g_HdecDescriptorTableState.EnableGeneralProtectionAppliedCount);
-            }
-
-            if (UmipApplied)
-            {
-                InterlockedIncrement64(&g_HdecDescriptorTableState.EnableUmipAppliedCount);
-            }
-        }
-
         VmcallStatus =
             (DescriptorTableApplied || GeneralProtectionApplied || UmipApplied) ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
 
@@ -654,11 +634,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
             (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) == 0;
 
         UmipRestored = HdecDescriptorTableRestoreGuestUmip(VCpu);
-
-        if (g_HdecDescriptorTableState.Enabled && UmipRestored)
-        {
-            InterlockedIncrement64(&g_HdecDescriptorTableState.DisableUmipRestoredCount);
-        }
 
         VmcallStatus =
             (DescriptorTableApplied && GeneralProtectionCleared && UmipRestored) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;

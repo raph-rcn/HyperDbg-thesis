@@ -11,10 +11,6 @@
  */
 #include "pch.h"
 
-#ifndef X86_CR4_UMIP
-#    define X86_CR4_UMIP 0x800
-#endif
-
 /**
  * @brief Observe HDEC-era VM-exits and re-apply controls if another path cleared them
  *
@@ -32,16 +28,12 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
     UINT32   ProcessorControls     = 0;
     UINT32   ExceptionBitmap       = 0;
     UINT32   SecondaryControls     = 0;
-    UINT64   GuestCr4              = 0;
     BOOLEAN  SecondaryActivePresent = FALSE;
     BOOLEAN  DescriptorBitPresent  = FALSE;
     BOOLEAN  GeneralProtectionBitPresent = FALSE;
     BOOLEAN  HdecProcessObjectMatch = FALSE;
     BOOLEAN  HdecTargetMatch       = FALSE;
     BOOLEAN  CanRefreshControls    = FALSE;
-    BOOLEAN  Refreshed             = FALSE;
-
-    InterlockedIncrement64(&g_HdecDescriptorTableState.VmexitCount);
 
     GuestCr3       = LayoutGetExactGuestProcessCr3();
     GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
@@ -68,33 +60,11 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
     switch (ExitReason)
     {
     case VMX_EXIT_REASON_EXECUTE_CPUID:
-        InterlockedIncrement64(&g_HdecDescriptorTableState.CpuidExitCount);
-
-        if (VCpu->LastVmexitRip < 0x80000000)
-        {
-            InterlockedIncrement64(&g_HdecDescriptorTableState.LowRipCpuidExitCount);
-            InterlockedCompareExchange64(&g_HdecDescriptorTableState.FirstLowRipCpuidRip,
-                                         (LONG64)VCpu->LastVmexitRip,
-                                         0);
-            InterlockedCompareExchange64(&g_HdecDescriptorTableState.FirstLowRipCpuidCr3,
-                                         (LONG64)GuestCr3Masked,
-                                         0);
-        }
-
         if (HdecTargetMatch)
         {
             InterlockedIncrement64(&g_HdecDescriptorTableState.TargetCpuidExitCount);
         }
 
-        break;
-
-    case VMX_EXIT_REASON_EXCEPTION_OR_NMI:
-        InterlockedIncrement64(&g_HdecDescriptorTableState.ExceptionRawExitCount);
-        break;
-
-    case VMX_EXIT_REASON_GDTR_IDTR_ACCESS:
-    case VMX_EXIT_REASON_LDTR_TR_ACCESS:
-        InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorRawExitCount);
         break;
 
     default:
@@ -107,36 +77,14 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
             (ProcessorControls & IA32_VMX_PROCBASED_CTLS_ACTIVATE_SECONDARY_CONTROLS_FLAG) != 0;
     }
 
-    if (SecondaryActivePresent)
-    {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.SecondaryActivationControlPresentCount);
-    }
-
-    __vmx_vmread(VMCS_GUEST_CR4, &GuestCr4);
-
-    if ((GuestCr4 & X86_CR4_UMIP) != 0)
-    {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.GuestUmipPresentCount);
-    }
-
     ExceptionBitmap = HvReadExceptionBitmap();
     GeneralProtectionBitPresent =
         (ExceptionBitmap & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
-
-    if (GeneralProtectionBitPresent)
-    {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionControlPresentCount);
-    }
 
     if (VmxVmread32P(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &SecondaryControls) == 0)
     {
         DescriptorBitPresent =
             (SecondaryControls & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) != 0;
-    }
-
-    if (DescriptorBitPresent)
-    {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorControlPresentCount);
     }
 
     CanRefreshControls =
@@ -146,8 +94,6 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
     if (CanRefreshControls && !GeneralProtectionBitPresent)
     {
         HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
-        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionControlRefreshCount);
-        Refreshed = TRUE;
     }
 
     if (CanRefreshControls && !SecondaryActivePresent)
@@ -158,25 +104,12 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
             ProcessorControls,
             VmxBasicMsr.VmxControls ? IA32_VMX_TRUE_PROCBASED_CTLS : IA32_VMX_PROCBASED_CTLS);
 
-        if (VmxVmwrite64(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcessorControls) == 0)
-        {
-            InterlockedIncrement64(&g_HdecDescriptorTableState.SecondaryActivationControlRefreshCount);
-            Refreshed = TRUE;
-        }
+        VmxVmwrite64(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcessorControls);
     }
 
     if (CanRefreshControls && !DescriptorBitPresent)
     {
-        if (HvSetDescriptorTableExiting(VCpu, TRUE))
-        {
-            InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorControlRefreshCount);
-            Refreshed = TRUE;
-        }
-    }
-
-    if (Refreshed)
-    {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.ControlRefreshCount);
+        HvSetDescriptorTableExiting(VCpu, TRUE);
     }
 }
 
