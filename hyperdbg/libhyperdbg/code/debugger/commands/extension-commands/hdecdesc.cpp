@@ -18,7 +18,7 @@ extern BOOLEAN g_IsSerialConnectedToRemoteDebuggee;
 VOID
 CommandHdecDescHelp()
 {
-    ShowMessages("!hdecdesc : enables or disables private descriptor-table exiting telemetry.\n\n");
+    ShowMessages("!hdecdesc : enables or disables descriptor instruction telemetry.\n\n");
 
     ShowMessages("syntax : \t!hdecdesc enable pid ProcessId (hex) [sample_id SampleId (string)]\n");
     ShowMessages("syntax : \t!hdecdesc disable\n");
@@ -218,7 +218,7 @@ CommandHdecDesc(vector<CommandToken> CommandTokens, string Command)
 
         if (CommandHdecDescSendRequest(&Request))
         {
-            ShowMessages("hdecdesc descriptor-table exiting is supported\n");
+            ShowMessages("hdecdesc descriptor instruction telemetry is supported\n");
         }
     }
     else

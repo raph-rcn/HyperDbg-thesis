@@ -131,7 +131,7 @@ PVOID g_SystemCallHookAddress;
 BOOLEAN g_CheckForFootprints;
 
 /**
- * @brief Private thesis detector state for descriptor-table exiting telemetry
+ * @brief Descriptor instruction telemetry state
  *
  */
 HDEC_DESCRIPTOR_TABLE_DETECTOR_STATE g_HdecDescriptorTableState;
