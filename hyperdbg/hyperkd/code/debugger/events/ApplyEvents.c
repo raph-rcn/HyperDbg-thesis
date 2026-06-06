@@ -1299,6 +1299,27 @@ ApplyEventTracingEvent(PDEBUGGER_EVENT                   Event,
 }
 
 /**
+ * @brief Applying descriptor-table instruction execution events
+ *
+ * @param Event The created event object
+ * @param ResultsToReturn Result buffer that should be returned to
+ * the user-mode
+ * @param InputFromVmxRoot Whether the input comes from VMX root-mode or IOCTL
+ *
+ * @return VOID
+ */
+VOID
+ApplyEventDescriptorTableExecutionEvent(PDEBUGGER_EVENT                   Event,
+                                        PDEBUGGER_EVENT_AND_ACTION_RESULT ResultsToReturn,
+                                        BOOLEAN                           InputFromVmxRoot)
+{
+    UNREFERENCED_PARAMETER(ResultsToReturn);
+    UNREFERENCED_PARAMETER(InputFromVmxRoot);
+
+    Event->Options.OptionalParam1 = Event->InitOptions.OptionalParam1;
+}
+
+/**
  * @brief Applying XSETBV instruction execution events
  *
  * @param Event The created event object

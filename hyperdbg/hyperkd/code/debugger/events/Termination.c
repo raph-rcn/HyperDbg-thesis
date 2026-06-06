@@ -1812,3 +1812,18 @@ TerminateXsetbvExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromVmxRoot)
         VmFuncSetTriggerEventForXsetbvs(FALSE);
     }
 }
+
+/**
+ * @brief Terminating descriptor-table instruction execution events
+ *
+ * @param Event target event
+ * @param InputFromVmxRoot Whether the input comes from VMX root-mode or IOCTL
+ *
+ * @return VOID
+ */
+VOID
+TerminateDescriptorTableExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromVmxRoot)
+{
+    UNREFERENCED_PARAMETER(Event);
+    UNREFERENCED_PARAMETER(InputFromVmxRoot);
+}

@@ -88,6 +88,21 @@ typedef enum _VMM_CALLBACK_TRIGGERING_EVENT_STATUS_TYPE
 //////////////////////////////////////////////////
 
 /**
+ * @brief Descriptor-table instruction filter bits
+ *
+ */
+typedef enum _DESCRIPTOR_TABLE_INSTRUCTION_TYPE
+{
+    DESCRIPTOR_TABLE_INSTRUCTION_INVALID = 0,
+    DESCRIPTOR_TABLE_INSTRUCTION_SIDT    = 1,
+    DESCRIPTOR_TABLE_INSTRUCTION_SGDT    = 2,
+    DESCRIPTOR_TABLE_INSTRUCTION_SLDT    = 4,
+    DESCRIPTOR_TABLE_INSTRUCTION_STR     = 8,
+    DESCRIPTOR_TABLE_INSTRUCTION_ALL     = 0xf,
+
+} DESCRIPTOR_TABLE_INSTRUCTION_TYPE;
+
+/**
  * @brief enum to show type of all HyperDbg events
  *
  */
@@ -168,6 +183,11 @@ typedef enum _VMM_EVENT_TYPE_ENUM
     //
     TRAP_EXECUTION_MODE_CHANGED,
     TRAP_EXECUTION_INSTRUCTION_TRACE,
+
+    //
+    // Descriptor-table Instruction Execution Events
+    //
+    DESCRIPTOR_TABLE_INSTRUCTION_EXECUTION,
 
     //
     // XSETBV Instruction Execution Events

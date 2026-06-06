@@ -70,6 +70,9 @@ TerminateCpuidExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromVmxRoot);
 VOID
 TerminateControlRegistersEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromVmxRoot);
 
+VOID
+TerminateDescriptorTableExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromVmxRoot);
+
 BOOLEAN
 TerminateEptHookUnHookSingleAddressFromVmxRootAndApplyInvalidation(UINT64 VirtualAddress,
                                                                    UINT64 PhysAddress);

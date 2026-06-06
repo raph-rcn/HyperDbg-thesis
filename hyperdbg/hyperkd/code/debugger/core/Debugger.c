@@ -111,6 +111,7 @@ DebuggerInitialize()
     InitializeListHead(&g_Events->TrapExecutionInstructionTraceEventsHead);
     InitializeListHead(&g_Events->ControlRegister3ModifiedEventsHead);
     InitializeListHead(&g_Events->ControlRegisterModifiedEventsHead);
+    InitializeListHead(&g_Events->DescriptorTableInstructionExecutionEventsHead);
     InitializeListHead(&g_Events->XsetbvInstructionExecutionEventsHead);
 
     //
@@ -1401,6 +1402,18 @@ DebuggerTriggerEvents(VMM_EVENT_TYPE_ENUM                   EventType,
 
             break;
 
+        case DESCRIPTOR_TABLE_INSTRUCTION_EXECUTION:
+
+            //
+            // Check if this descriptor-table instruction is selected.
+            //
+            if ((CurrentEvent->Options.OptionalParam1 & (UINT64)Context) == 0)
+            {
+                continue;
+            }
+
+            break;
+
         case XSETBV_INSTRUCTION_EXECUTION:
 
             //
@@ -2128,6 +2141,9 @@ DebuggerGetEventListByEventType(VMM_EVENT_TYPE_ENUM EventType)
         break;
     case CONTROL_REGISTER_MODIFIED:
         ResultList = &g_Events->ControlRegisterModifiedEventsHead;
+        break;
+    case DESCRIPTOR_TABLE_INSTRUCTION_EXECUTION:
+        ResultList = &g_Events->DescriptorTableInstructionExecutionEventsHead;
         break;
     case XSETBV_INSTRUCTION_EXECUTION:
         ResultList = &g_Events->XsetbvInstructionExecutionEventsHead;
@@ -3035,6 +3051,15 @@ DebuggerApplyEvent(PDEBUGGER_EVENT                   Event,
 
         break;
     }
+    case DESCRIPTOR_TABLE_INSTRUCTION_EXECUTION:
+    {
+        //
+        // Apply the descriptor-table instruction execution events
+        //
+        ApplyEventDescriptorTableExecutionEvent(Event, ResultsToReturn, InputFromVmxRoot);
+
+        break;
+    }
     case XSETBV_INSTRUCTION_EXECUTION:
     {
         //
@@ -3611,6 +3636,16 @@ DebuggerTerminateEvent(UINT64 Tag, BOOLEAN InputFromVmxRoot)
         // Call mov to control register event terminator
         //
         TerminateControlRegistersEvent(Event, InputFromVmxRoot);
+        Result = TRUE;
+
+        break;
+    }
+    case DESCRIPTOR_TABLE_INSTRUCTION_EXECUTION:
+    {
+        //
+        // Call descriptor-table instruction execution event terminator
+        //
+        TerminateDescriptorTableExecutionEvent(Event, InputFromVmxRoot);
         Result = TRUE;
 
         break;
