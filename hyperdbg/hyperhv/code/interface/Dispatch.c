@@ -146,6 +146,50 @@ HdecDescriptorTableDecodeInstruction(UCHAR * InstructionBytes, UINT32 Instructio
 }
 
 /**
+ * @brief Decode descriptor-table VM-exit instruction identity from VMCS instruction info
+ *
+ * @param ExitReason
+ * @param InstructionInfo
+ * @return CHAR* NULL for load variants or unknown identities
+ */
+static CHAR *
+HdecDescriptorTableDecodeInstructionInfo(UINT32 ExitReason, UINT32 InstructionInfo)
+{
+    UINT32 InstructionIdentity;
+
+    if (ExitReason == VMX_EXIT_REASON_GDTR_IDTR_ACCESS)
+    {
+        InstructionIdentity =
+            VMX_VMEXIT_INSTRUCTION_INFO_GDTR_IDTR_ACCESS_INSTRUCTION(InstructionInfo);
+
+        if (InstructionIdentity == 0)
+        {
+            return "sgdt";
+        }
+        else if (InstructionIdentity == 1)
+        {
+            return "sidt";
+        }
+    }
+    else if (ExitReason == VMX_EXIT_REASON_LDTR_TR_ACCESS)
+    {
+        InstructionIdentity =
+            VMX_VMEXIT_INSTRUCTION_INFO_LDTR_TR_ACCESS_INSTRUCTION(InstructionInfo);
+
+        if (InstructionIdentity == 0)
+        {
+            return "sldt";
+        }
+        else if (InstructionIdentity == 1)
+        {
+            return "str";
+        }
+    }
+
+    return NULL;
+}
+
+/**
  * @brief Emit a JSONL descriptor-table telemetry record
  *
  * @param VCpu
@@ -168,26 +212,26 @@ HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UIN
                                        sizeof(SampleId),
                                        g_HdecDescriptorTableState.SampleId);
 
-    Log("{\"source\":\"%s\","
-        "\"event_type\":\"descriptor_table_instruction\","
-        "\"instruction\":\"%s\","
-        "\"rip\":\"0x%llx\","
-        "\"pid\":%u,"
-        "\"cr3\":\"0x%llx\","
-        "\"process_name\":\"%s\","
-        "\"sample_id\":\"%s\","
-        "\"exit_reason\":%u,"
-        "\"module_name\":\"\","
-        "\"module_base\":\"0x0\","
-        "\"module_size\":0}\n",
-        Source,
-        InstructionName,
-        VCpu->LastVmexitRip,
-        g_HdecDescriptorTableState.ProcessId,
-        GuestCr3,
-        ProcessName,
-        SampleId,
-        ExitReason);
+    LogInfo("{\"source\":\"%s\","
+            "\"event_type\":\"descriptor_table_instruction\","
+            "\"instruction\":\"%s\","
+            "\"rip\":\"0x%llx\","
+            "\"pid\":%u,"
+            "\"cr3\":\"0x%llx\","
+            "\"process_name\":\"%s\","
+            "\"sample_id\":\"%s\","
+            "\"exit_reason\":%u,"
+            "\"module_name\":\"\","
+            "\"module_base\":\"0x0\","
+            "\"module_size\":0}",
+            Source,
+            InstructionName,
+            VCpu->LastVmexitRip,
+            g_HdecDescriptorTableState.ProcessId,
+            GuestCr3,
+            ProcessName,
+            SampleId,
+            ExitReason);
 }
 
 /**
@@ -213,6 +257,8 @@ HdecDescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUP
         return;
     }
 
+    InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionExitCount);
+
     //
     // #GP is a fault. If HyperDbg re-injects it after the VM-exit, the guest
     // must see the original faulting RIP, not the next instruction.
@@ -225,17 +271,22 @@ HdecDescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUP
 
     HdecDescriptorProcessMatch =
         (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
-         CurrentProcessId == g_HdecDescriptorTableState.ProcessId);
+         CurrentProcessId == g_HdecDescriptorTableState.ProcessId ||
+         (g_HdecDescriptorTableState.ProcessObject != 0 &&
+          (UINT64)(ULONG_PTR)PsGetCurrentProcess() == g_HdecDescriptorTableState.ProcessObject));
 
     if (!HdecDescriptorProcessMatch)
     {
         return;
     }
 
+    InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionMatchCount);
+
     if (!MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
                                                   InstructionBytes,
                                                   MAXIMUM_INSTR_SIZE))
     {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionReadFailureCount);
         return;
     }
 
@@ -244,8 +295,11 @@ HdecDescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUP
 
     if (InstructionName == NULL)
     {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionDecodeFailureCount);
         return;
     }
+
+    InterlockedIncrement64(&g_HdecDescriptorTableState.RuntimeLogCount);
 
     HdecDescriptorTableLogEvent(VCpu,
                                 InterruptExit.Vector,
@@ -960,28 +1014,44 @@ DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReas
 
     HdecDescriptorProcessMatch =
         (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
-         CurrentProcessId == g_HdecDescriptorTableState.ProcessId);
+         CurrentProcessId == g_HdecDescriptorTableState.ProcessId ||
+         (g_HdecDescriptorTableState.ProcessObject != 0 &&
+          (UINT64)(ULONG_PTR)PsGetCurrentProcess() == g_HdecDescriptorTableState.ProcessObject));
+
+    if (g_HdecDescriptorTableState.Enabled)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorExitCount);
+    }
 
     if (g_HdecDescriptorTableState.Enabled && HdecDescriptorProcessMatch)
     {
         UCHAR  InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
         CHAR * InstructionName                      = NULL;
+        UINT32 InstructionInfo                      = 0;
 
-        if (MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
+        InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorExitMatchCount);
+
+        VmxVmread32P(VMCS_VMEXIT_INSTRUCTION_INFO, &InstructionInfo);
+        InstructionName = HdecDescriptorTableDecodeInstructionInfo(ExitReason, InstructionInfo);
+
+        if (InstructionName == NULL &&
+            MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
                                                       InstructionBytes,
                                                       MAXIMUM_INSTR_SIZE))
         {
             InstructionName = HdecDescriptorTableDecodeInstruction(InstructionBytes,
                                                                    MAXIMUM_INSTR_SIZE);
+        }
 
-            if (InstructionName != NULL)
-            {
-                HdecDescriptorTableLogEvent(VCpu,
-                                            ExitReason,
-                                            GuestCr3Masked,
-                                            "hyperdbg_descriptor_table_exit",
-                                            InstructionName);
-            }
+        if (InstructionName != NULL)
+        {
+            InterlockedIncrement64(&g_HdecDescriptorTableState.RuntimeLogCount);
+
+            HdecDescriptorTableLogEvent(VCpu,
+                                        ExitReason,
+                                        GuestCr3Masked,
+                                        "hyperdbg_descriptor_table_exit",
+                                        InstructionName);
         }
     }
 

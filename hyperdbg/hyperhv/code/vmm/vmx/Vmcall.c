@@ -11,6 +11,65 @@
  */
 #include "pch.h"
 
+#ifndef X86_CR4_UMIP
+#    define X86_CR4_UMIP 0x800
+#endif
+
+static BOOLEAN
+HdecDescriptorTableIsUmipSupported()
+{
+    INT32 CpuInfo[4] = {0};
+
+    __cpuidex(CpuInfo, 7, 0);
+
+    return (CpuInfo[2] & CPUID_ECX_UMIP_FLAG) != 0;
+}
+
+static BOOLEAN
+HdecDescriptorTableForceGuestUmip(VIRTUAL_MACHINE_STATE * VCpu)
+{
+    UINT64 GuestCr4 = 0;
+
+    if (!HdecDescriptorTableIsUmipSupported())
+    {
+        return FALSE;
+    }
+
+    __vmx_vmread(VMCS_GUEST_CR4, &GuestCr4);
+
+    if ((GuestCr4 & X86_CR4_UMIP) != 0)
+    {
+        return TRUE;
+    }
+
+    if (!VCpu->HdecDescriptorTableUmipForced)
+    {
+        VCpu->HdecDescriptorTableOriginalGuestCr4 = GuestCr4;
+        VCpu->HdecDescriptorTableUmipForced       = TRUE;
+    }
+
+    return VmxVmwrite64(VMCS_GUEST_CR4, GuestCr4 | X86_CR4_UMIP) == 0;
+}
+
+static BOOLEAN
+HdecDescriptorTableRestoreGuestUmip(VIRTUAL_MACHINE_STATE * VCpu)
+{
+    if (!VCpu->HdecDescriptorTableUmipForced)
+    {
+        return TRUE;
+    }
+
+    if (VmxVmwrite64(VMCS_GUEST_CR4, VCpu->HdecDescriptorTableOriginalGuestCr4) != 0)
+    {
+        return FALSE;
+    }
+
+    VCpu->HdecDescriptorTableOriginalGuestCr4 = 0;
+    VCpu->HdecDescriptorTableUmipForced       = FALSE;
+
+    return TRUE;
+}
+
 /**
  * @brief Handle vm-exits of VMCALLs
  *
@@ -536,43 +595,73 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
     }
     case VMCALL_SET_DESCRIPTOR_TABLE_EXITING:
     {
-        UINT32 ExceptionBitmapAfter = 0;
+        UINT32  ExceptionBitmapAfter = 0;
+        BOOLEAN DescriptorTableApplied;
+        BOOLEAN GeneralProtectionApplied;
+        BOOLEAN UmipApplied;
 
-        if (HvSetDescriptorTableExiting(VCpu, TRUE))
-        {
-            HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
-            ExceptionBitmapAfter = HvReadExceptionBitmap();
+        DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
 
-            VmcallStatus =
-                (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0 ?
-                    STATUS_SUCCESS :
-                    STATUS_UNSUCCESSFUL;
-        }
-        else
+        //
+        // #GP interception is the observable path for UMIP-blocked user-mode
+        // descriptor instructions. Keep it independent from descriptor-table
+        // exiting so one control failure does not disable the other path.
+        //
+        HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
+        ExceptionBitmapAfter = HvReadExceptionBitmap();
+        GeneralProtectionApplied =
+            (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
+
+        UmipApplied = HdecDescriptorTableForceGuestUmip(VCpu);
+
+        if (g_HdecDescriptorTableState.Enabled)
         {
-            VmcallStatus = STATUS_NOT_SUPPORTED;
+            InterlockedIncrement64(&g_HdecDescriptorTableState.EnableVmcallCount);
+
+            if (DescriptorTableApplied)
+            {
+                InterlockedIncrement64(&g_HdecDescriptorTableState.EnableDescriptorAppliedCount);
+            }
+
+            if (GeneralProtectionApplied)
+            {
+                InterlockedIncrement64(&g_HdecDescriptorTableState.EnableGeneralProtectionAppliedCount);
+            }
+
+            if (UmipApplied)
+            {
+                InterlockedIncrement64(&g_HdecDescriptorTableState.EnableUmipAppliedCount);
+            }
         }
+
+        VmcallStatus =
+            (DescriptorTableApplied || GeneralProtectionApplied || UmipApplied) ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
 
         break;
     }
     case VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING:
     {
-        UINT32 ExceptionBitmapAfter = 0;
+        UINT32  ExceptionBitmapAfter = 0;
+        BOOLEAN DescriptorTableApplied;
+        BOOLEAN GeneralProtectionCleared;
+        BOOLEAN UmipRestored;
 
-        if (HvSetDescriptorTableExiting(VCpu, FALSE))
-        {
-            HvUnsetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
-            ExceptionBitmapAfter = HvReadExceptionBitmap();
+        DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, FALSE);
 
-            VmcallStatus =
-                (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) == 0 ?
-                    STATUS_SUCCESS :
-                    STATUS_UNSUCCESSFUL;
-        }
-        else
+        HvUnsetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
+        ExceptionBitmapAfter = HvReadExceptionBitmap();
+        GeneralProtectionCleared =
+            (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) == 0;
+
+        UmipRestored = HdecDescriptorTableRestoreGuestUmip(VCpu);
+
+        if (g_HdecDescriptorTableState.Enabled && UmipRestored)
         {
-            VmcallStatus = STATUS_UNSUCCESSFUL;
+            InterlockedIncrement64(&g_HdecDescriptorTableState.DisableUmipRestoredCount);
         }
+
+        VmcallStatus =
+            (DescriptorTableApplied && GeneralProtectionCleared && UmipRestored) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 
         break;
     }

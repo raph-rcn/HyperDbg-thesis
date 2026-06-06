@@ -41,6 +41,11 @@ ProtectedHvChangeExceptionBitmapWithIntegrityCheck(VIRTUAL_MACHINE_STATE * VCpu,
         return;
     }
 
+    if (g_HdecDescriptorTableState.Enabled)
+    {
+        CurrentMask |= 1 << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT;
+    }
+
     //
     // Check for syscall callback (masking #DBs and #BPs)
     //

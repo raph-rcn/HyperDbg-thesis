@@ -177,7 +177,53 @@ VmFuncHdecSetDescriptorTableDetectorState(BOOLEAN Enable,
                                           CHAR *  ProcessName,
                                           CHAR *  SampleId)
 {
+    UINT64 PreviousProcessObject = g_HdecDescriptorTableState.ProcessObject;
+
+    if (!Enable && g_HdecDescriptorTableState.Enabled)
+    {
+        LogInfo("[HDEC] stats pid=%x cr3=%llx process_object=%llx set_vmcalls=%lld desc_applied=%lld gp_applied=%lld umip_applied=%lld umip_restored=%lld vmexits=%lld target_vmexits=%lld object_matches=%lld cpuid=%lld target_cpuid=%lld low_cpuid=%lld first_low_cpuid_rip=%llx first_low_cpuid_cr3=%llx exception_raw=%lld descriptor_raw=%lld secondary_active=%lld secondary_refresh=%lld guest_umip=%lld desc_present=%lld gp_present=%lld refresh=%lld desc_refresh=%lld gp_refresh=%lld desc_exits=%lld desc_matches=%lld gp_exits=%lld gp_matches=%lld gp_read_fail=%lld gp_decode_fail=%lld logs=%lld",
+                g_HdecDescriptorTableState.ProcessId,
+                g_HdecDescriptorTableState.ProcessCr3,
+                g_HdecDescriptorTableState.ProcessObject,
+                g_HdecDescriptorTableState.EnableVmcallCount,
+                g_HdecDescriptorTableState.EnableDescriptorAppliedCount,
+                g_HdecDescriptorTableState.EnableGeneralProtectionAppliedCount,
+                g_HdecDescriptorTableState.EnableUmipAppliedCount,
+                g_HdecDescriptorTableState.DisableUmipRestoredCount,
+                g_HdecDescriptorTableState.VmexitCount,
+                g_HdecDescriptorTableState.TargetVmexitCount,
+                g_HdecDescriptorTableState.ProcessObjectMatchCount,
+                g_HdecDescriptorTableState.CpuidExitCount,
+                g_HdecDescriptorTableState.TargetCpuidExitCount,
+                g_HdecDescriptorTableState.LowRipCpuidExitCount,
+                g_HdecDescriptorTableState.FirstLowRipCpuidRip,
+                g_HdecDescriptorTableState.FirstLowRipCpuidCr3,
+                g_HdecDescriptorTableState.ExceptionRawExitCount,
+                g_HdecDescriptorTableState.DescriptorRawExitCount,
+                g_HdecDescriptorTableState.SecondaryActivationControlPresentCount,
+                g_HdecDescriptorTableState.SecondaryActivationControlRefreshCount,
+                g_HdecDescriptorTableState.GuestUmipPresentCount,
+                g_HdecDescriptorTableState.DescriptorControlPresentCount,
+                g_HdecDescriptorTableState.GeneralProtectionControlPresentCount,
+                g_HdecDescriptorTableState.ControlRefreshCount,
+                g_HdecDescriptorTableState.DescriptorControlRefreshCount,
+                g_HdecDescriptorTableState.GeneralProtectionControlRefreshCount,
+                g_HdecDescriptorTableState.DescriptorExitCount,
+                g_HdecDescriptorTableState.DescriptorExitMatchCount,
+                g_HdecDescriptorTableState.GeneralProtectionExitCount,
+                g_HdecDescriptorTableState.GeneralProtectionMatchCount,
+                g_HdecDescriptorTableState.GeneralProtectionReadFailureCount,
+                g_HdecDescriptorTableState.GeneralProtectionDecodeFailureCount,
+                g_HdecDescriptorTableState.RuntimeLogCount);
+    }
+
     g_HdecDescriptorTableState.Enabled = FALSE;
+
+    if (PreviousProcessObject != 0)
+    {
+        ObDereferenceObject((PVOID)(ULONG_PTR)PreviousProcessObject);
+    }
+
     RtlZeroMemory(&g_HdecDescriptorTableState, sizeof(g_HdecDescriptorTableState));
 
     if (!Enable)
@@ -187,6 +233,15 @@ VmFuncHdecSetDescriptorTableDetectorState(BOOLEAN Enable,
 
     g_HdecDescriptorTableState.ProcessId = ProcessId;
     g_HdecDescriptorTableState.ProcessCr3 = ProcessCr3 & ~0xfffULL;
+
+    {
+        PEPROCESS TargetProcess = NULL;
+
+        if (NT_SUCCESS(PsLookupProcessByProcessId((HANDLE)(ULONG_PTR)ProcessId, &TargetProcess)))
+        {
+            g_HdecDescriptorTableState.ProcessObject = (UINT64)(ULONG_PTR)TargetProcess;
+        }
+    }
 
     if (ProcessName != NULL)
     {

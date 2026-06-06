@@ -39,10 +39,41 @@ typedef struct _HDEC_DESCRIPTOR_TABLE_REQUEST
 typedef struct _HDEC_DESCRIPTOR_TABLE_DETECTOR_STATE
 {
     volatile BOOLEAN Enabled;
+    UINT64           ProcessObject;
     UINT32           ProcessId;
     UINT64           ProcessCr3;
     CHAR             ProcessName[HDEC_DESCRIPTOR_TABLE_PROCESS_NAME_MAX];
     CHAR             SampleId[HDEC_DESCRIPTOR_TABLE_SAMPLE_ID_MAX];
+    volatile LONG64  EnableVmcallCount;
+    volatile LONG64  EnableDescriptorAppliedCount;
+    volatile LONG64  EnableGeneralProtectionAppliedCount;
+    volatile LONG64  EnableUmipAppliedCount;
+    volatile LONG64  DisableUmipRestoredCount;
+    volatile LONG64  VmexitCount;
+    volatile LONG64  TargetVmexitCount;
+    volatile LONG64  ProcessObjectMatchCount;
+    volatile LONG64  CpuidExitCount;
+    volatile LONG64  TargetCpuidExitCount;
+    volatile LONG64  LowRipCpuidExitCount;
+    volatile LONG64  FirstLowRipCpuidRip;
+    volatile LONG64  FirstLowRipCpuidCr3;
+    volatile LONG64  ExceptionRawExitCount;
+    volatile LONG64  DescriptorRawExitCount;
+    volatile LONG64  SecondaryActivationControlPresentCount;
+    volatile LONG64  SecondaryActivationControlRefreshCount;
+    volatile LONG64  GuestUmipPresentCount;
+    volatile LONG64  DescriptorControlPresentCount;
+    volatile LONG64  GeneralProtectionControlPresentCount;
+    volatile LONG64  ControlRefreshCount;
+    volatile LONG64  DescriptorControlRefreshCount;
+    volatile LONG64  GeneralProtectionControlRefreshCount;
+    volatile LONG64  DescriptorExitCount;
+    volatile LONG64  DescriptorExitMatchCount;
+    volatile LONG64  GeneralProtectionExitCount;
+    volatile LONG64  GeneralProtectionMatchCount;
+    volatile LONG64  GeneralProtectionReadFailureCount;
+    volatile LONG64  GeneralProtectionDecodeFailureCount;
+    volatile LONG64  RuntimeLogCount;
 
 } HDEC_DESCRIPTOR_TABLE_DETECTOR_STATE, *PHDEC_DESCRIPTOR_TABLE_DETECTOR_STATE;
 

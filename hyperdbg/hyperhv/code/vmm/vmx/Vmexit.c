@@ -11,6 +11,175 @@
  */
 #include "pch.h"
 
+#ifndef X86_CR4_UMIP
+#    define X86_CR4_UMIP 0x800
+#endif
+
+/**
+ * @brief Observe HDEC-era VM-exits and re-apply controls if another path cleared them
+ *
+ * @param VCpu The virtual processor's state
+ * @param ExitReason Current VM-exit reason
+ * @return VOID
+ */
+static VOID
+HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason)
+{
+    IA32_VMX_BASIC_REGISTER VmxBasicMsr = {0};
+    CR3_TYPE GuestCr3              = {0};
+    UINT64   GuestCr3Masked        = 0;
+    UINT32   CurrentProcessId      = 0;
+    UINT32   ProcessorControls     = 0;
+    UINT32   ExceptionBitmap       = 0;
+    UINT32   SecondaryControls     = 0;
+    UINT64   GuestCr4              = 0;
+    BOOLEAN  SecondaryActivePresent = FALSE;
+    BOOLEAN  DescriptorBitPresent  = FALSE;
+    BOOLEAN  GeneralProtectionBitPresent = FALSE;
+    BOOLEAN  HdecProcessObjectMatch = FALSE;
+    BOOLEAN  HdecTargetMatch       = FALSE;
+    BOOLEAN  CanRefreshControls    = FALSE;
+    BOOLEAN  Refreshed             = FALSE;
+
+    InterlockedIncrement64(&g_HdecDescriptorTableState.VmexitCount);
+
+    GuestCr3       = LayoutGetExactGuestProcessCr3();
+    GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
+    CurrentProcessId = (UINT32)(ULONG_PTR)PsGetCurrentProcessId();
+    HdecProcessObjectMatch =
+        (g_HdecDescriptorTableState.ProcessObject != 0 &&
+         (UINT64)(ULONG_PTR)PsGetCurrentProcess() == g_HdecDescriptorTableState.ProcessObject);
+
+    if (HdecProcessObjectMatch)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.ProcessObjectMatchCount);
+    }
+
+    HdecTargetMatch =
+        (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
+         CurrentProcessId == g_HdecDescriptorTableState.ProcessId ||
+         HdecProcessObjectMatch);
+
+    if (HdecTargetMatch)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.TargetVmexitCount);
+    }
+
+    switch (ExitReason)
+    {
+    case VMX_EXIT_REASON_EXECUTE_CPUID:
+        InterlockedIncrement64(&g_HdecDescriptorTableState.CpuidExitCount);
+
+        if (VCpu->LastVmexitRip < 0x80000000)
+        {
+            InterlockedIncrement64(&g_HdecDescriptorTableState.LowRipCpuidExitCount);
+            InterlockedCompareExchange64(&g_HdecDescriptorTableState.FirstLowRipCpuidRip,
+                                         (LONG64)VCpu->LastVmexitRip,
+                                         0);
+            InterlockedCompareExchange64(&g_HdecDescriptorTableState.FirstLowRipCpuidCr3,
+                                         (LONG64)GuestCr3Masked,
+                                         0);
+        }
+
+        if (HdecTargetMatch)
+        {
+            InterlockedIncrement64(&g_HdecDescriptorTableState.TargetCpuidExitCount);
+        }
+
+        break;
+
+    case VMX_EXIT_REASON_EXCEPTION_OR_NMI:
+        InterlockedIncrement64(&g_HdecDescriptorTableState.ExceptionRawExitCount);
+        break;
+
+    case VMX_EXIT_REASON_GDTR_IDTR_ACCESS:
+    case VMX_EXIT_REASON_LDTR_TR_ACCESS:
+        InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorRawExitCount);
+        break;
+
+    default:
+        break;
+    }
+
+    if (VmxVmread32P(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &ProcessorControls) == 0)
+    {
+        SecondaryActivePresent =
+            (ProcessorControls & IA32_VMX_PROCBASED_CTLS_ACTIVATE_SECONDARY_CONTROLS_FLAG) != 0;
+    }
+
+    if (SecondaryActivePresent)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.SecondaryActivationControlPresentCount);
+    }
+
+    __vmx_vmread(VMCS_GUEST_CR4, &GuestCr4);
+
+    if ((GuestCr4 & X86_CR4_UMIP) != 0)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.GuestUmipPresentCount);
+    }
+
+    ExceptionBitmap = HvReadExceptionBitmap();
+    GeneralProtectionBitPresent =
+        (ExceptionBitmap & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
+
+    if (GeneralProtectionBitPresent)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionControlPresentCount);
+    }
+
+    if (VmxVmread32P(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &SecondaryControls) == 0)
+    {
+        DescriptorBitPresent =
+            (SecondaryControls & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) != 0;
+    }
+
+    if (DescriptorBitPresent)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorControlPresentCount);
+    }
+
+    CanRefreshControls =
+        !VCpu->HdecDescriptorTableRestoreOnMtf &&
+        ExitReason != VMX_EXIT_REASON_MONITOR_TRAP_FLAG;
+
+    if (CanRefreshControls && !GeneralProtectionBitPresent)
+    {
+        HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
+        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionControlRefreshCount);
+        Refreshed = TRUE;
+    }
+
+    if (CanRefreshControls && !SecondaryActivePresent)
+    {
+        VmxBasicMsr.AsUInt = __readmsr(IA32_VMX_BASIC);
+        ProcessorControls |= IA32_VMX_PROCBASED_CTLS_ACTIVATE_SECONDARY_CONTROLS_FLAG;
+        ProcessorControls = HvAdjustControls(
+            ProcessorControls,
+            VmxBasicMsr.VmxControls ? IA32_VMX_TRUE_PROCBASED_CTLS : IA32_VMX_PROCBASED_CTLS);
+
+        if (VmxVmwrite64(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcessorControls) == 0)
+        {
+            InterlockedIncrement64(&g_HdecDescriptorTableState.SecondaryActivationControlRefreshCount);
+            Refreshed = TRUE;
+        }
+    }
+
+    if (CanRefreshControls && !DescriptorBitPresent)
+    {
+        if (HvSetDescriptorTableExiting(VCpu, TRUE))
+        {
+            InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorControlRefreshCount);
+            Refreshed = TRUE;
+        }
+    }
+
+    if (Refreshed)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.ControlRefreshCount);
+    }
+}
+
 /**
  * @brief VM-Exit handler for different exit reasons
  *
@@ -78,6 +247,12 @@ VmxVmexitHandler(_Inout_ PGUEST_REGS GuestRegs)
     // LogInfo("VM_EXIT_REASON : 0x%x", ExitReason);
     // LogInfo("VMCS_EXIT_QUALIFICATION : 0x%llx", VCpu->ExitQualification);
     //
+
+    if (g_HdecDescriptorTableState.Enabled &&
+        ExitReason != VMX_EXIT_REASON_EXECUTE_VMCALL)
+    {
+        HdecDescriptorTableObserveAndRefreshControls(VCpu, ExitReason);
+    }
 
     switch (ExitReason)
     {
