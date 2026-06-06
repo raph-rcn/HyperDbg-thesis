@@ -27,9 +27,7 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
     UINT32   CurrentProcessId      = 0;
     UINT32   ProcessorControls     = 0;
     UINT32   ExceptionBitmap       = 0;
-    UINT32   SecondaryControls     = 0;
     BOOLEAN  SecondaryActivePresent = FALSE;
-    BOOLEAN  DescriptorBitPresent  = FALSE;
     BOOLEAN  GeneralProtectionBitPresent = FALSE;
     BOOLEAN  HdecProcessObjectMatch = FALSE;
     BOOLEAN  HdecTargetMatch       = FALSE;
@@ -81,12 +79,6 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
     GeneralProtectionBitPresent =
         (ExceptionBitmap & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
 
-    if (VmxVmread32P(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &SecondaryControls) == 0)
-    {
-        DescriptorBitPresent =
-            (SecondaryControls & IA32_VMX_PROCBASED_CTLS2_DESCRIPTOR_TABLE_EXITING_FLAG) != 0;
-    }
-
     CanRefreshControls =
         !VCpu->HdecDescriptorTableRestoreOnMtf &&
         ExitReason != VMX_EXIT_REASON_MONITOR_TRAP_FLAG;
@@ -105,11 +97,6 @@ HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT3
             VmxBasicMsr.VmxControls ? IA32_VMX_TRUE_PROCBASED_CTLS : IA32_VMX_PROCBASED_CTLS);
 
         VmxVmwrite64(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcessorControls);
-    }
-
-    if (CanRefreshControls && !DescriptorBitPresent)
-    {
-        HvSetDescriptorTableExiting(VCpu, TRUE);
     }
 }
 
