@@ -1833,5 +1833,5 @@ TerminateDescriptorTableExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromV
     }
 
     VmFuncSetTriggerEventForDescriptorTables(FALSE);
-    ConfigureDisableDescriptorTableExitingOnlyOnAllProcessors();
+    ConfigureDisableDescriptorTableExitingOnAllProcessors();
 }

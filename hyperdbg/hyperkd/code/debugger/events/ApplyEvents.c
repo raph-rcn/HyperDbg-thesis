@@ -1326,7 +1326,7 @@ ApplyEventDescriptorTableExecutionEvent(PDEBUGGER_EVENT                   Event,
     Event->Options.OptionalParam1 = Event->InitOptions.OptionalParam1;
 
     VmFuncSetTriggerEventForDescriptorTables(TRUE);
-    ConfigureEnableDescriptorTableExitingOnlyOnAllProcessors();
+    ConfigureEnableDescriptorTableExitingOnAllProcessors();
 
     return TRUE;
 }

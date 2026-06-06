@@ -633,27 +633,36 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
     {
         UINT32  ExceptionBitmapAfter = 0;
         BOOLEAN DescriptorTableApplied;
-        BOOLEAN GeneralProtectionCleared;
-        BOOLEAN UmipRestored;
+        BOOLEAN GeneralProtectionApplied;
+        BOOLEAN UmipApplied;
+        BOOLEAN KeepDescriptorTableControls;
 
-        if (g_TriggerEventForDescriptorTables)
+        KeepDescriptorTableControls =
+            g_HdecDescriptorTableState.Enabled || g_TriggerEventForDescriptorTables;
+
+        if (KeepDescriptorTableControls)
         {
             DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
+            HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
+            ExceptionBitmapAfter = HvReadExceptionBitmap();
+            GeneralProtectionApplied =
+                (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
+
+            UmipApplied = HdecDescriptorTableForceGuestUmip(VCpu);
         }
         else
         {
             DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, FALSE);
+            HvUnsetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
+            ExceptionBitmapAfter = HvReadExceptionBitmap();
+            GeneralProtectionApplied =
+                (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) == 0;
+
+            UmipApplied = HdecDescriptorTableRestoreGuestUmip(VCpu);
         }
 
-        HvUnsetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
-        ExceptionBitmapAfter = HvReadExceptionBitmap();
-        GeneralProtectionCleared =
-            (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) == 0;
-
-        UmipRestored = HdecDescriptorTableRestoreGuestUmip(VCpu);
-
         VmcallStatus =
-            (DescriptorTableApplied && GeneralProtectionCleared && UmipRestored) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+            (DescriptorTableApplied && GeneralProtectionApplied && UmipApplied) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 
         break;
     }

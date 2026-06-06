@@ -289,20 +289,27 @@ HdecDescriptorTableLogEvent(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason, UIN
 static VOID
 HdecDescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_INFORMATION InterruptExit)
 {
-    CR3_TYPE GuestCr3                    = {0};
-    UINT64   GuestCr3Masked              = 0;
-    UINT32   CurrentProcessId;
-    BOOLEAN  HdecDescriptorProcessMatch  = FALSE;
-    UCHAR    InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
-    CHAR *   InstructionName                      = NULL;
+    CR3_TYPE                          GuestCr3                    = {0};
+    UINT64                            GuestCr3Masked              = 0;
+    UINT32                            CurrentProcessId;
+    BOOLEAN                           HdecDescriptorProcessMatch  = FALSE;
+    BOOLEAN                           HdecDescriptorActive        = g_HdecDescriptorTableState.Enabled;
+    BOOLEAN                           NativeDescriptorEventActive = g_TriggerEventForDescriptorTables;
+    UCHAR                             InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
+    CHAR *                            InstructionName                      = NULL;
+    DESCRIPTOR_TABLE_INSTRUCTION_TYPE DescriptorInstructionType;
+    BOOLEAN                           PostEventTriggerReq = FALSE;
 
-    if (!g_HdecDescriptorTableState.Enabled ||
+    if ((!HdecDescriptorActive && !NativeDescriptorEventActive) ||
         InterruptExit.Vector != EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)
     {
         return;
     }
 
-    InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionExitCount);
+    if (HdecDescriptorActive)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionExitCount);
+    }
 
     //
     // #GP is a fault. If HyperDbg re-injects it after the VM-exit, the guest
@@ -314,24 +321,34 @@ HdecDescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUP
     GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
     CurrentProcessId = (UINT32)(ULONG_PTR)PsGetCurrentProcessId();
 
-    HdecDescriptorProcessMatch =
-        (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
-         CurrentProcessId == g_HdecDescriptorTableState.ProcessId ||
-         (g_HdecDescriptorTableState.ProcessObject != 0 &&
-          (UINT64)(ULONG_PTR)PsGetCurrentProcess() == g_HdecDescriptorTableState.ProcessObject));
+    if (HdecDescriptorActive)
+    {
+        HdecDescriptorProcessMatch =
+            (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
+             CurrentProcessId == g_HdecDescriptorTableState.ProcessId ||
+             (g_HdecDescriptorTableState.ProcessObject != 0 &&
+              (UINT64)(ULONG_PTR)PsGetCurrentProcess() == g_HdecDescriptorTableState.ProcessObject));
+    }
 
-    if (!HdecDescriptorProcessMatch)
+    if (!HdecDescriptorProcessMatch && !NativeDescriptorEventActive)
     {
         return;
     }
 
-    InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionMatchCount);
+    if (HdecDescriptorProcessMatch)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionMatchCount);
+    }
 
     if (!MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
                                                   InstructionBytes,
                                                   MAXIMUM_INSTR_SIZE))
     {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionReadFailureCount);
+        if (HdecDescriptorProcessMatch)
+        {
+            InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionReadFailureCount);
+        }
+
         return;
     }
 
@@ -340,17 +357,38 @@ HdecDescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUP
 
     if (InstructionName == NULL)
     {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionDecodeFailureCount);
+        if (HdecDescriptorProcessMatch)
+        {
+            InterlockedIncrement64(&g_HdecDescriptorTableState.GeneralProtectionDecodeFailureCount);
+        }
+
         return;
     }
 
-    InterlockedIncrement64(&g_HdecDescriptorTableState.RuntimeLogCount);
+    if (HdecDescriptorProcessMatch)
+    {
+        InterlockedIncrement64(&g_HdecDescriptorTableState.RuntimeLogCount);
 
-    HdecDescriptorTableLogEvent(VCpu,
-                                InterruptExit.Vector,
-                                GuestCr3Masked,
-                                "hyperdbg_descriptor_table_gp_fault",
-                                InstructionName);
+        HdecDescriptorTableLogEvent(VCpu,
+                                    InterruptExit.Vector,
+                                    GuestCr3Masked,
+                                    "hyperdbg_descriptor_table_gp_fault",
+                                    InstructionName);
+    }
+
+    if (NativeDescriptorEventActive)
+    {
+        DescriptorInstructionType = DescriptorTableInstructionNameToType(InstructionName);
+
+        if (DescriptorInstructionType != DESCRIPTOR_TABLE_INSTRUCTION_INVALID)
+        {
+            VmmCallbackTriggerEvents(DESCRIPTOR_TABLE_INSTRUCTION_EXECUTION,
+                                     VMM_CALLBACK_CALLING_STAGE_PRE_EVENT_EMULATION,
+                                     (PVOID)(UINT64)DescriptorInstructionType,
+                                     &PostEventTriggerReq,
+                                     VCpu->Regs);
+        }
+    }
 }
 
 /**
