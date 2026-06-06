@@ -1118,6 +1118,68 @@ DpcRoutineDisableDescriptorTableExitingAllCores(KDPC * Dpc, PVOID DeferredContex
 }
 
 /**
+ * @brief Enable only descriptor-table exiting in secondary cpu-based controls
+ *
+ * @param Dpc
+ * @param DeferredContext
+ * @param SystemArgument1
+ * @param SystemArgument2
+ * @return VOID
+ */
+VOID
+DpcRoutineEnableDescriptorTableExitingOnlyAllCores(KDPC * Dpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(DeferredContext);
+
+    //
+    // Enable descriptor-table exiting from vmx-root
+    //
+    AsmVmxVmcall(VMCALL_SET_DESCRIPTOR_TABLE_EXITING_ONLY, 0, 0, 0);
+
+    //
+    // Wait for all DPCs to synchronize at this point
+    //
+    KeSignalCallDpcSynchronize(SystemArgument2);
+
+    //
+    // Mark the DPC as being complete
+    //
+    KeSignalCallDpcDone(SystemArgument1);
+}
+
+/**
+ * @brief Disable only descriptor-table exiting in secondary cpu-based controls
+ *
+ * @param Dpc
+ * @param DeferredContext
+ * @param SystemArgument1
+ * @param SystemArgument2
+ * @return VOID
+ */
+VOID
+DpcRoutineDisableDescriptorTableExitingOnlyAllCores(KDPC * Dpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(DeferredContext);
+
+    //
+    // Disable descriptor-table exiting from vmx-root
+    //
+    AsmVmxVmcall(VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING_ONLY, 0, 0, 0);
+
+    //
+    // Wait for all DPCs to synchronize at this point
+    //
+    KeSignalCallDpcSynchronize(SystemArgument2);
+
+    //
+    // Mark the DPC as being complete
+    //
+    KeSignalCallDpcDone(SystemArgument1);
+}
+
+/**
  * @brief Enable Exception Bitmaps on all cores
  *
  * @param Dpc

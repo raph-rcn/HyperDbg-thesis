@@ -121,6 +121,9 @@ IMPORT_EXPORT_VMM VOID
 VmFuncSetTriggerEventForXsetbvs(BOOLEAN Set);
 
 IMPORT_EXPORT_VMM VOID
+VmFuncSetTriggerEventForDescriptorTables(BOOLEAN Set);
+
+IMPORT_EXPORT_VMM VOID
 VmFuncSetInterruptibilityState(UINT64 InterruptibilityState);
 
 IMPORT_EXPORT_VMM VOID
@@ -260,6 +263,12 @@ ConfigureEnableDescriptorTableExitingOnAllProcessors();
 
 IMPORT_EXPORT_VMM VOID
 ConfigureDisableDescriptorTableExitingOnAllProcessors();
+
+IMPORT_EXPORT_VMM VOID
+ConfigureEnableDescriptorTableExitingOnlyOnAllProcessors();
+
+IMPORT_EXPORT_VMM VOID
+ConfigureDisableDescriptorTableExitingOnlyOnAllProcessors();
 
 IMPORT_EXPORT_VMM VOID
 ConfigureEnableEferSyscallEventsOnAllProcessors();

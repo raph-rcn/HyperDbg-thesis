@@ -1306,17 +1306,29 @@ ApplyEventTracingEvent(PDEBUGGER_EVENT                   Event,
  * the user-mode
  * @param InputFromVmxRoot Whether the input comes from VMX root-mode or IOCTL
  *
- * @return VOID
+ * @return BOOLEAN
  */
-VOID
+BOOLEAN
 ApplyEventDescriptorTableExecutionEvent(PDEBUGGER_EVENT                   Event,
                                         PDEBUGGER_EVENT_AND_ACTION_RESULT ResultsToReturn,
                                         BOOLEAN                           InputFromVmxRoot)
 {
-    UNREFERENCED_PARAMETER(ResultsToReturn);
     UNREFERENCED_PARAMETER(InputFromVmxRoot);
 
+    if (!VmFuncHdecDescriptorTableExitingSupported())
+    {
+        ResultsToReturn->IsSuccessful = FALSE;
+        ResultsToReturn->Error        = DEBUGGER_ERROR_DESCRIPTOR_TABLE_EXITING_NOT_SUPPORTED;
+
+        return FALSE;
+    }
+
     Event->Options.OptionalParam1 = Event->InitOptions.OptionalParam1;
+
+    VmFuncSetTriggerEventForDescriptorTables(TRUE);
+    ConfigureEnableDescriptorTableExitingOnlyOnAllProcessors();
+
+    return TRUE;
 }
 
 /**

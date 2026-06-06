@@ -128,6 +128,7 @@ DebuggerInitialize()
     // Set initial state of triggering events for VMCALLs
     //
     VmFuncSetTriggerEventForCpuids(FALSE);
+    VmFuncSetTriggerEventForDescriptorTables(FALSE);
 
     //
     // Initialize script engines global variables holder
@@ -3056,7 +3057,10 @@ DebuggerApplyEvent(PDEBUGGER_EVENT                   Event,
         //
         // Apply the descriptor-table instruction execution events
         //
-        ApplyEventDescriptorTableExecutionEvent(Event, ResultsToReturn, InputFromVmxRoot);
+        if (!ApplyEventDescriptorTableExecutionEvent(Event, ResultsToReturn, InputFromVmxRoot))
+        {
+            goto ClearTheEventAfterCreatingEvent;
+        }
 
         break;
     }

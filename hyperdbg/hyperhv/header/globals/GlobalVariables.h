@@ -156,6 +156,8 @@ BOOLEAN g_TriggerEventForCpuids;
 
 BOOLEAN g_TriggerEventForXsetbvs;
 
+BOOLEAN g_TriggerEventForDescriptorTables;
+
 //////////////////////////////////////////////////
 //  	Global Variable (Execution Trap)	    //
 //////////////////////////////////////////////////

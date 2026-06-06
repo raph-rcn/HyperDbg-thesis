@@ -40,6 +40,12 @@ VOID
 BroadcastDisableDescriptorTableExitingOnAllProcessors();
 
 VOID
+BroadcastEnableDescriptorTableExitingOnlyOnAllProcessors();
+
+VOID
+BroadcastDisableDescriptorTableExitingOnlyOnAllProcessors();
+
+VOID
 BroadcastChangeToMbecSupportedEptpOnAllProcessors();
 
 VOID

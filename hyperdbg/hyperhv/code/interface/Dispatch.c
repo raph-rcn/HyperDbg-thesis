@@ -190,6 +190,51 @@ HdecDescriptorTableDecodeInstructionInfo(UINT32 ExitReason, UINT32 InstructionIn
 }
 
 /**
+ * @brief Convert a decoded descriptor-table instruction name to a native event context
+ *
+ * @param InstructionName Decoded instruction name
+ * @return DESCRIPTOR_TABLE_INSTRUCTION_TYPE
+ */
+static DESCRIPTOR_TABLE_INSTRUCTION_TYPE
+DescriptorTableInstructionNameToType(CHAR * InstructionName)
+{
+    if (InstructionName == NULL)
+    {
+        return DESCRIPTOR_TABLE_INSTRUCTION_INVALID;
+    }
+
+    if (InstructionName[0] == 's' &&
+        InstructionName[1] == 'i' &&
+        InstructionName[2] == 'd' &&
+        InstructionName[3] == 't')
+    {
+        return DESCRIPTOR_TABLE_INSTRUCTION_SIDT;
+    }
+    else if (InstructionName[0] == 's' &&
+             InstructionName[1] == 'g' &&
+             InstructionName[2] == 'd' &&
+             InstructionName[3] == 't')
+    {
+        return DESCRIPTOR_TABLE_INSTRUCTION_SGDT;
+    }
+    else if (InstructionName[0] == 's' &&
+             InstructionName[1] == 'l' &&
+             InstructionName[2] == 'd' &&
+             InstructionName[3] == 't')
+    {
+        return DESCRIPTOR_TABLE_INSTRUCTION_SLDT;
+    }
+    else if (InstructionName[0] == 's' &&
+             InstructionName[1] == 't' &&
+             InstructionName[2] == 'r')
+    {
+        return DESCRIPTOR_TABLE_INSTRUCTION_STR;
+    }
+
+    return DESCRIPTOR_TABLE_INSTRUCTION_INVALID;
+}
+
+/**
  * @brief Emit a JSONL descriptor-table telemetry record
  *
  * @param VCpu
@@ -1007,6 +1052,7 @@ DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReas
     UINT64   GuestCr3Masked              = 0;
     UINT32   CurrentProcessId;
     BOOLEAN  HdecDescriptorProcessMatch  = FALSE;
+    BOOLEAN  NativeDescriptorEventActive = g_TriggerEventForDescriptorTables;
 
     GuestCr3       = LayoutGetExactGuestProcessCr3();
     GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
@@ -1023,13 +1069,14 @@ DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReas
         InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorExitCount);
     }
 
-    if (g_HdecDescriptorTableState.Enabled && HdecDescriptorProcessMatch)
+    if (NativeDescriptorEventActive ||
+        (g_HdecDescriptorTableState.Enabled && HdecDescriptorProcessMatch))
     {
-        UCHAR  InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
-        CHAR * InstructionName                      = NULL;
-        UINT32 InstructionInfo                      = 0;
-
-        InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorExitMatchCount);
+        UCHAR                             InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
+        CHAR *                            InstructionName                      = NULL;
+        UINT32                            InstructionInfo                      = 0;
+        DESCRIPTOR_TABLE_INSTRUCTION_TYPE DescriptorInstructionType;
+        BOOLEAN                           PostEventTriggerReq = FALSE;
 
         VmxVmread32P(VMCS_VMEXIT_INSTRUCTION_INFO, &InstructionInfo);
         InstructionName = HdecDescriptorTableDecodeInstructionInfo(ExitReason, InstructionInfo);
@@ -1043,15 +1090,34 @@ DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReas
                                                                    MAXIMUM_INSTR_SIZE);
         }
 
-        if (InstructionName != NULL)
+        if (g_HdecDescriptorTableState.Enabled && HdecDescriptorProcessMatch)
         {
-            InterlockedIncrement64(&g_HdecDescriptorTableState.RuntimeLogCount);
+            InterlockedIncrement64(&g_HdecDescriptorTableState.DescriptorExitMatchCount);
 
-            HdecDescriptorTableLogEvent(VCpu,
-                                        ExitReason,
-                                        GuestCr3Masked,
-                                        "hyperdbg_descriptor_table_exit",
-                                        InstructionName);
+            if (InstructionName != NULL)
+            {
+                InterlockedIncrement64(&g_HdecDescriptorTableState.RuntimeLogCount);
+
+                HdecDescriptorTableLogEvent(VCpu,
+                                            ExitReason,
+                                            GuestCr3Masked,
+                                            "hyperdbg_descriptor_table_exit",
+                                            InstructionName);
+            }
+        }
+
+        if (NativeDescriptorEventActive)
+        {
+            DescriptorInstructionType = DescriptorTableInstructionNameToType(InstructionName);
+
+            if (DescriptorInstructionType != DESCRIPTOR_TABLE_INSTRUCTION_INVALID)
+            {
+                VmmCallbackTriggerEvents(DESCRIPTOR_TABLE_INSTRUCTION_EXECUTION,
+                                         VMM_CALLBACK_CALLING_STAGE_PRE_EVENT_EMULATION,
+                                         (PVOID)(UINT64)DescriptorInstructionType,
+                                         &PostEventTriggerReq,
+                                         VCpu->Regs);
+            }
         }
     }
 

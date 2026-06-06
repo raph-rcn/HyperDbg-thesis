@@ -619,6 +619,16 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
 
         break;
     }
+    case VMCALL_SET_DESCRIPTOR_TABLE_EXITING_ONLY:
+    {
+        BOOLEAN DescriptorTableApplied;
+
+        DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
+
+        VmcallStatus = DescriptorTableApplied ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
+
+        break;
+    }
     case VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING:
     {
         UINT32  ExceptionBitmapAfter = 0;
@@ -626,7 +636,14 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
         BOOLEAN GeneralProtectionCleared;
         BOOLEAN UmipRestored;
 
-        DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, FALSE);
+        if (g_TriggerEventForDescriptorTables)
+        {
+            DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
+        }
+        else
+        {
+            DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, FALSE);
+        }
 
         HvUnsetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
         ExceptionBitmapAfter = HvReadExceptionBitmap();
@@ -637,6 +654,23 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
 
         VmcallStatus =
             (DescriptorTableApplied && GeneralProtectionCleared && UmipRestored) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+
+        break;
+    }
+    case VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING_ONLY:
+    {
+        BOOLEAN DescriptorTableApplied;
+
+        if (g_HdecDescriptorTableState.Enabled)
+        {
+            DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
+        }
+        else
+        {
+            DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, FALSE);
+        }
+
+        VmcallStatus = DescriptorTableApplied ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 
         break;
     }

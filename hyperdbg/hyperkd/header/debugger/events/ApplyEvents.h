@@ -106,7 +106,7 @@ ApplyEventTracingEvent(PDEBUGGER_EVENT                   Event,
                        PDEBUGGER_EVENT_AND_ACTION_RESULT ResultsToReturn,
                        BOOLEAN                           InputFromVmxRoot);
 
-VOID
+BOOLEAN
 ApplyEventDescriptorTableExecutionEvent(PDEBUGGER_EVENT                   Event,
                                         PDEBUGGER_EVENT_AND_ACTION_RESULT ResultsToReturn,
                                         BOOLEAN                           InputFromVmxRoot);

@@ -1826,4 +1826,12 @@ TerminateDescriptorTableExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromV
 {
     UNREFERENCED_PARAMETER(Event);
     UNREFERENCED_PARAMETER(InputFromVmxRoot);
+
+    if (DebuggerEventListCount(&g_Events->DescriptorTableInstructionExecutionEventsHead) > 1)
+    {
+        return;
+    }
+
+    VmFuncSetTriggerEventForDescriptorTables(FALSE);
+    ConfigureDisableDescriptorTableExitingOnlyOnAllProcessors();
 }

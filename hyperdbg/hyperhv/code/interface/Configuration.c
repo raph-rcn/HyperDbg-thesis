@@ -137,6 +137,28 @@ ConfigureDisableDescriptorTableExitingOnAllProcessors()
 }
 
 /**
+ * @brief routines for enabling only descriptor-table exiting on all cores
+ *
+ * @return VOID
+ */
+VOID
+ConfigureEnableDescriptorTableExitingOnlyOnAllProcessors()
+{
+    BroadcastEnableDescriptorTableExitingOnlyOnAllProcessors();
+}
+
+/**
+ * @brief routines for disabling only descriptor-table exiting on all cores
+ *
+ * @return VOID
+ */
+VOID
+ConfigureDisableDescriptorTableExitingOnlyOnAllProcessors()
+{
+    BroadcastDisableDescriptorTableExitingOnlyOnAllProcessors();
+}
+
+/**
  * @brief routines for debugging threads (disable mov-to-cr3 exiting)
  *
  * @return VOID

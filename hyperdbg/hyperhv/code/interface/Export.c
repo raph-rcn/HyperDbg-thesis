@@ -693,6 +693,18 @@ VmFuncSetTriggerEventForXsetbvs(BOOLEAN Set)
 }
 
 /**
+ * @brief Set trigger event for descriptor-table instructions
+ *
+ * @param Set Set or unset the trigger
+ * @return VOID
+ */
+VOID
+VmFuncSetTriggerEventForDescriptorTables(BOOLEAN Set)
+{
+    g_TriggerEventForDescriptorTables = Set;
+}
+
+/**
  * @brief VMX-root compatible strlen
  * @param s A pointer to the string
  *
