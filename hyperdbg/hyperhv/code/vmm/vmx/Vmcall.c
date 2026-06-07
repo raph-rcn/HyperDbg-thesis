@@ -11,65 +11,6 @@
  */
 #include "pch.h"
 
-#ifndef X86_CR4_UMIP
-#    define X86_CR4_UMIP 0x800
-#endif
-
-static BOOLEAN
-HdecDescriptorTableIsUmipSupported()
-{
-    INT32 CpuInfo[4] = {0};
-
-    __cpuidex(CpuInfo, 7, 0);
-
-    return (CpuInfo[2] & CPUID_ECX_UMIP_FLAG) != 0;
-}
-
-static BOOLEAN
-HdecDescriptorTableForceGuestUmip(VIRTUAL_MACHINE_STATE * VCpu)
-{
-    UINT64 GuestCr4 = 0;
-
-    if (!HdecDescriptorTableIsUmipSupported())
-    {
-        return FALSE;
-    }
-
-    __vmx_vmread(VMCS_GUEST_CR4, &GuestCr4);
-
-    if ((GuestCr4 & X86_CR4_UMIP) != 0)
-    {
-        return TRUE;
-    }
-
-    if (!VCpu->HdecDescriptorTableUmipForced)
-    {
-        VCpu->HdecDescriptorTableOriginalGuestCr4 = GuestCr4;
-        VCpu->HdecDescriptorTableUmipForced       = TRUE;
-    }
-
-    return VmxVmwrite64(VMCS_GUEST_CR4, GuestCr4 | X86_CR4_UMIP) == 0;
-}
-
-static BOOLEAN
-HdecDescriptorTableRestoreGuestUmip(VIRTUAL_MACHINE_STATE * VCpu)
-{
-    if (!VCpu->HdecDescriptorTableUmipForced)
-    {
-        return TRUE;
-    }
-
-    if (VmxVmwrite64(VMCS_GUEST_CR4, VCpu->HdecDescriptorTableOriginalGuestCr4) != 0)
-    {
-        return FALSE;
-    }
-
-    VCpu->HdecDescriptorTableOriginalGuestCr4 = 0;
-    VCpu->HdecDescriptorTableUmipForced       = FALSE;
-
-    return TRUE;
-}
-
 /**
  * @brief Handle vm-exits of VMCALLs
  *
@@ -598,24 +539,22 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
         UINT32  ExceptionBitmapAfter = 0;
         BOOLEAN DescriptorTableApplied;
         BOOLEAN GeneralProtectionApplied;
-        BOOLEAN UmipApplied;
 
         DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
 
         //
-        // #GP interception is the observable path for UMIP-blocked user-mode
-        // descriptor instructions. Keep it independent from descriptor-table
-        // exiting so one control failure does not disable the other path.
+        // #GP interception is a passive fallback for guests that already run
+        // with UMIP enabled. Do not force CR4.UMIP here; descriptor-table
+        // exiting remains the primary non-faulting path when the guest allows
+        // user-mode descriptor instructions to execute.
         //
         HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
         ExceptionBitmapAfter = HvReadExceptionBitmap();
         GeneralProtectionApplied =
             (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
 
-        UmipApplied = HdecDescriptorTableForceGuestUmip(VCpu);
-
         VmcallStatus =
-            (DescriptorTableApplied || GeneralProtectionApplied || UmipApplied) ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
+            (DescriptorTableApplied || GeneralProtectionApplied) ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
 
         break;
     }
@@ -624,7 +563,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
         BOOLEAN DescriptorTableApplied;
 
         DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
-
         VmcallStatus = DescriptorTableApplied ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
 
         break;
@@ -634,7 +572,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
         UINT32  ExceptionBitmapAfter = 0;
         BOOLEAN DescriptorTableApplied;
         BOOLEAN GeneralProtectionApplied;
-        BOOLEAN UmipApplied;
         BOOLEAN KeepDescriptorTableControls;
 
         KeepDescriptorTableControls =
@@ -647,8 +584,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
             ExceptionBitmapAfter = HvReadExceptionBitmap();
             GeneralProtectionApplied =
                 (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
-
-            UmipApplied = HdecDescriptorTableForceGuestUmip(VCpu);
         }
         else
         {
@@ -657,12 +592,10 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
             ExceptionBitmapAfter = HvReadExceptionBitmap();
             GeneralProtectionApplied =
                 (ExceptionBitmapAfter & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) == 0;
-
-            UmipApplied = HdecDescriptorTableRestoreGuestUmip(VCpu);
         }
 
         VmcallStatus =
-            (DescriptorTableApplied && GeneralProtectionApplied && UmipApplied) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+            (DescriptorTableApplied && GeneralProtectionApplied) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 
         break;
     }
@@ -678,7 +611,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
         {
             DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, FALSE);
         }
-
         VmcallStatus = DescriptorTableApplied ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 
         break;

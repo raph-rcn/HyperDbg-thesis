@@ -364,7 +364,4 @@ typedef struct _VIRTUAL_MACHINE_STATE
     EPT_POINTER         EptPointer;   // Extended-Page-Table Pointer
     PVMM_EPT_PAGE_TABLE EptPageTable; // Details of core-specific page-table
 
-    BOOLEAN HdecDescriptorTableUmipForced;       // Restore guest CR4.UMIP after private HDEC detection
-    UINT64  HdecDescriptorTableOriginalGuestCr4; // Original guest CR4 before forcing UMIP
-
 } VIRTUAL_MACHINE_STATE, *PVIRTUAL_MACHINE_STATE;
