@@ -12,95 +12,6 @@
 #include "pch.h"
 
 /**
- * @brief Observe HDEC-era VM-exits and re-apply controls if another path cleared them
- *
- * @param VCpu The virtual processor's state
- * @param ExitReason Current VM-exit reason
- * @return VOID
- */
-static VOID
-HdecDescriptorTableObserveAndRefreshControls(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReason)
-{
-    IA32_VMX_BASIC_REGISTER VmxBasicMsr = {0};
-    CR3_TYPE GuestCr3              = {0};
-    UINT64   GuestCr3Masked        = 0;
-    UINT32   CurrentProcessId      = 0;
-    UINT32   ProcessorControls     = 0;
-    UINT32   ExceptionBitmap       = 0;
-    BOOLEAN  SecondaryActivePresent = FALSE;
-    BOOLEAN  GeneralProtectionBitPresent = FALSE;
-    BOOLEAN  HdecProcessObjectMatch = FALSE;
-    BOOLEAN  HdecTargetMatch       = FALSE;
-    BOOLEAN  CanRefreshControls    = FALSE;
-
-    GuestCr3       = LayoutGetExactGuestProcessCr3();
-    GuestCr3Masked = GuestCr3.Flags & ~0xfffULL;
-    CurrentProcessId = (UINT32)(ULONG_PTR)PsGetCurrentProcessId();
-    HdecProcessObjectMatch =
-        (g_HdecDescriptorTableState.ProcessObject != 0 &&
-         (UINT64)(ULONG_PTR)PsGetCurrentProcess() == g_HdecDescriptorTableState.ProcessObject);
-
-    if (HdecProcessObjectMatch)
-    {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.ProcessObjectMatchCount);
-    }
-
-    HdecTargetMatch =
-        (GuestCr3Masked == g_HdecDescriptorTableState.ProcessCr3 ||
-         CurrentProcessId == g_HdecDescriptorTableState.ProcessId ||
-         HdecProcessObjectMatch);
-
-    if (HdecTargetMatch)
-    {
-        InterlockedIncrement64(&g_HdecDescriptorTableState.TargetVmexitCount);
-    }
-
-    switch (ExitReason)
-    {
-    case VMX_EXIT_REASON_EXECUTE_CPUID:
-        if (HdecTargetMatch)
-        {
-            InterlockedIncrement64(&g_HdecDescriptorTableState.TargetCpuidExitCount);
-        }
-
-        break;
-
-    default:
-        break;
-    }
-
-    if (VmxVmread32P(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, &ProcessorControls) == 0)
-    {
-        SecondaryActivePresent =
-            (ProcessorControls & IA32_VMX_PROCBASED_CTLS_ACTIVATE_SECONDARY_CONTROLS_FLAG) != 0;
-    }
-
-    ExceptionBitmap = HvReadExceptionBitmap();
-    GeneralProtectionBitPresent =
-        (ExceptionBitmap & (1u << EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)) != 0;
-
-    CanRefreshControls =
-        !VCpu->HdecDescriptorTableRestoreOnMtf &&
-        ExitReason != VMX_EXIT_REASON_MONITOR_TRAP_FLAG;
-
-    if (CanRefreshControls && !GeneralProtectionBitPresent)
-    {
-        HvSetExceptionBitmap(VCpu, EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT);
-    }
-
-    if (CanRefreshControls && !SecondaryActivePresent)
-    {
-        VmxBasicMsr.AsUInt = __readmsr(IA32_VMX_BASIC);
-        ProcessorControls |= IA32_VMX_PROCBASED_CTLS_ACTIVATE_SECONDARY_CONTROLS_FLAG;
-        ProcessorControls = HvAdjustControls(
-            ProcessorControls,
-            VmxBasicMsr.VmxControls ? IA32_VMX_TRUE_PROCBASED_CTLS : IA32_VMX_PROCBASED_CTLS);
-
-        VmxVmwrite64(VMCS_CTRL_PROCESSOR_BASED_VM_EXECUTION_CONTROLS, ProcessorControls);
-    }
-}
-
-/**
  * @brief VM-Exit handler for different exit reasons
  *
  * @param GuestRegs Registers that are automatically saved by AsmVmexitHandler (HOST_RIP)
@@ -167,12 +78,6 @@ VmxVmexitHandler(_Inout_ PGUEST_REGS GuestRegs)
     // LogInfo("VM_EXIT_REASON : 0x%x", ExitReason);
     // LogInfo("VMCS_EXIT_QUALIFICATION : 0x%llx", VCpu->ExitQualification);
     //
-
-    if (g_HdecDescriptorTableState.Enabled &&
-        ExitReason != VMX_EXIT_REASON_EXECUTE_VMCALL)
-    {
-        HdecDescriptorTableObserveAndRefreshControls(VCpu, ExitReason);
-    }
 
     switch (ExitReason)
     {

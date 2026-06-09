@@ -60,7 +60,6 @@ DrvDispatchIoControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     PDEBUGGER_GENERAL_ACTION                                DebuggerNewActionRequest;
     PSMI_OPERATION_PACKETS                                  SmiOperationRequest;
     PHYPERTRACE_OPERATION_PACKETS                           HyperTraceOperationRequest;
-    PHDEC_DESCRIPTOR_TABLE_REQUEST                          HdecDescriptorTableRequest;
     PVOID                                                   BufferToStoreThreadsAndProcessesDetails;
     NTSTATUS                                                Status;
     ULONG                                                   InBuffLength;  // Input buffer length
@@ -1290,109 +1289,6 @@ DrvDispatchIoControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
             HyperTracePerformOperation(HyperTraceOperationRequest, FALSE);
 
             Irp->IoStatus.Information = SIZEOF_HYPERTRACE_OPERATION_PACKETS;
-            Status                    = STATUS_SUCCESS;
-
-            //
-            // Avoid zeroing it
-            //
-            DoNotChangeInformation = TRUE;
-
-            break;
-
-        case IOCTL_HDEC_DESCRIPTOR_TABLE_EVENT:
-
-            //
-            // First validate the parameters.
-            //
-            if (IrpStack->Parameters.DeviceIoControl.InputBufferLength < SIZEOF_HDEC_DESCRIPTOR_TABLE_REQUEST ||
-                Irp->AssociatedIrp.SystemBuffer == NULL)
-            {
-                Status = STATUS_INVALID_PARAMETER;
-                LogError("Err, invalid parameter to IOCTL dispatcher");
-                break;
-            }
-
-            InBuffLength  = IrpStack->Parameters.DeviceIoControl.InputBufferLength;
-            OutBuffLength = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
-
-            if (!InBuffLength || OutBuffLength < SIZEOF_HDEC_DESCRIPTOR_TABLE_REQUEST)
-            {
-                Status = STATUS_INVALID_PARAMETER;
-                break;
-            }
-
-            HdecDescriptorTableRequest = (PHDEC_DESCRIPTOR_TABLE_REQUEST)Irp->AssociatedIrp.SystemBuffer;
-            HdecDescriptorTableRequest->SampleId[HDEC_DESCRIPTOR_TABLE_SAMPLE_ID_MAX - 1]       = '\0';
-            HdecDescriptorTableRequest->ProcessName[HDEC_DESCRIPTOR_TABLE_PROCESS_NAME_MAX - 1] = '\0';
-
-            if (HdecDescriptorTableRequest->RequestType == HDEC_DESCRIPTOR_TABLE_REQUEST_ENABLE)
-            {
-                NTSTATUS  LookupStatus;
-                PEPROCESS TargetProcess = NULL;
-                CR3_TYPE  ProcessCr3    = {0};
-                PCHAR     ProcessName   = NULL;
-
-                if (!VmFuncHdecDescriptorTableExitingSupported())
-                {
-                    HdecDescriptorTableRequest->KernelStatus = DEBUGGER_ERROR_HDEC_DESCRIPTOR_TABLE_EXITING_NOT_SUPPORTED;
-                    Irp->IoStatus.Information                = SIZEOF_HDEC_DESCRIPTOR_TABLE_REQUEST;
-                    Status                                   = STATUS_SUCCESS;
-                    DoNotChangeInformation                   = TRUE;
-                    break;
-                }
-
-                LookupStatus = PsLookupProcessByProcessId((HANDLE)HdecDescriptorTableRequest->ProcessId, &TargetProcess);
-                if (!NT_SUCCESS(LookupStatus))
-                {
-                    HdecDescriptorTableRequest->KernelStatus = DEBUGGER_ERROR_HDEC_DESCRIPTOR_TABLE_PROCESS_NOT_FOUND;
-                    Irp->IoStatus.Information                = SIZEOF_HDEC_DESCRIPTOR_TABLE_REQUEST;
-                    Status                                   = STATUS_SUCCESS;
-                    DoNotChangeInformation                   = TRUE;
-                    break;
-                }
-
-                ProcessCr3.Flags = ((NT_KPROCESS *)TargetProcess)->DirectoryTableBase;
-                ProcessName      = CommonGetProcessNameFromProcessControlBlock(TargetProcess);
-
-                HdecDescriptorTableRequest->ProcessCr3 = ProcessCr3.Flags & ~0xfffULL;
-                RtlZeroMemory(HdecDescriptorTableRequest->ProcessName,
-                              sizeof(HdecDescriptorTableRequest->ProcessName));
-
-                if (ProcessName != NULL)
-                {
-                    RtlStringCbCopyA(HdecDescriptorTableRequest->ProcessName,
-                                     sizeof(HdecDescriptorTableRequest->ProcessName),
-                                     ProcessName);
-                }
-
-                ObDereferenceObject(TargetProcess);
-
-                VmFuncHdecSetDescriptorTableDetectorState(TRUE,
-                                                          HdecDescriptorTableRequest->ProcessId,
-                                                          HdecDescriptorTableRequest->ProcessCr3,
-                                                          HdecDescriptorTableRequest->ProcessName,
-                                                          HdecDescriptorTableRequest->SampleId);
-
-                ConfigureEnableDescriptorTableExitingOnAllProcessors();
-                HdecDescriptorTableRequest->KernelStatus = DEBUGGER_OPERATION_WAS_SUCCESSFUL;
-            }
-            else if (HdecDescriptorTableRequest->RequestType == HDEC_DESCRIPTOR_TABLE_REQUEST_DISABLE)
-            {
-                VmFuncHdecSetDescriptorTableDetectorState(FALSE, 0, 0, NULL, NULL);
-                ConfigureDisableDescriptorTableExitingOnAllProcessors();
-                HdecDescriptorTableRequest->KernelStatus = DEBUGGER_OPERATION_WAS_SUCCESSFUL;
-            }
-            else if (HdecDescriptorTableRequest->RequestType == HDEC_DESCRIPTOR_TABLE_REQUEST_QUERY)
-            {
-                HdecDescriptorTableRequest->KernelStatus =
-                    VmFuncHdecDescriptorTableExitingSupported() ? DEBUGGER_OPERATION_WAS_SUCCESSFUL : DEBUGGER_ERROR_HDEC_DESCRIPTOR_TABLE_EXITING_NOT_SUPPORTED;
-            }
-            else
-            {
-                HdecDescriptorTableRequest->KernelStatus = DEBUGGER_ERROR_READING_MEMORY_INVALID_PARAMETER;
-            }
-
-            Irp->IoStatus.Information = SIZEOF_HDEC_DESCRIPTOR_TABLE_REQUEST;
             Status                    = STATUS_SUCCESS;
 
             //

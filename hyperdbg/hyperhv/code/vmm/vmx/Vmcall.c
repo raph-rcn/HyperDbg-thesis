@@ -574,8 +574,7 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
         BOOLEAN GeneralProtectionApplied;
         BOOLEAN KeepDescriptorTableControls;
 
-        KeepDescriptorTableControls =
-            g_HdecDescriptorTableState.Enabled || g_TriggerEventForDescriptorTables;
+        KeepDescriptorTableControls = g_TriggerEventForDescriptorTables;
 
         if (KeepDescriptorTableControls)
         {
@@ -603,7 +602,7 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
     {
         BOOLEAN DescriptorTableApplied;
 
-        if (g_HdecDescriptorTableState.Enabled)
+        if (g_TriggerEventForDescriptorTables)
         {
             DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
         }

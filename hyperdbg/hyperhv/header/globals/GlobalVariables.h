@@ -130,12 +130,6 @@ PVOID g_SystemCallHookAddress;
  */
 BOOLEAN g_CheckForFootprints;
 
-/**
- * @brief Descriptor instruction telemetry state
- *
- */
-HDEC_DESCRIPTOR_TABLE_DETECTOR_STATE g_HdecDescriptorTableState;
-
 //////////////////////////////////////////////////
 //  	Global Variable (debugger-related)	    //
 //////////////////////////////////////////////////
