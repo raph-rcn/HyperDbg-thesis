@@ -1315,7 +1315,7 @@ ApplyEventDescriptorTableExecutionEvent(PDEBUGGER_EVENT                   Event,
 {
     UNREFERENCED_PARAMETER(InputFromVmxRoot);
 
-    if (!VmFuncHdecDescriptorTableExitingSupported())
+    if (!VmFuncDescriptorTableExitingSupported())
     {
         ResultsToReturn->IsSuccessful = FALSE;
         ResultsToReturn->Error        = DEBUGGER_ERROR_DESCRIPTOR_TABLE_EXITING_NOT_SUPPORTED;

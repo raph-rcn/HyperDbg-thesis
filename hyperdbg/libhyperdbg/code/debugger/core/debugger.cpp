@@ -594,16 +594,6 @@ ShowErrorMessage(UINT32 Error)
                      Error);
         break;
 
-    case DEBUGGER_ERROR_HDEC_DESCRIPTOR_TABLE_EXITING_NOT_SUPPORTED:
-        ShowMessages("err, descriptor-table exiting is not supported by this processor or nested hypervisor (%x)\n",
-                     Error);
-        break;
-
-    case DEBUGGER_ERROR_HDEC_DESCRIPTOR_TABLE_PROCESS_NOT_FOUND:
-        ShowMessages("err, the target process for descriptor-table detection was not found (%x)\n",
-                     Error);
-        break;
-
     case DEBUGGER_ERROR_DESCRIPTOR_TABLE_EXITING_NOT_SUPPORTED:
         ShowMessages("err, descriptor-table exiting is not supported by this processor or nested hypervisor (%x)\n",
                      Error);

@@ -1471,8 +1471,6 @@ InitializeCommandsDictionary()
 
     g_CommandsList["!monitor"] = {&CommandMonitor, &CommandMonitorHelp, DEBUGGER_COMMAND_MONITOR_ATTRIBUTES};
 
-    g_CommandsList["!hdecdesc"] = {&CommandHdecDesc, &CommandHdecDescHelp, DEBUGGER_COMMAND_HDECDESC_ATTRIBUTES};
-
     g_CommandsList["!descmon"] = {&CommandDescmon, &CommandDescmonHelp, DEBUGGER_COMMAND_DESCMON_ATTRIBUTES};
 
     g_CommandsList["!vmcall"] = {&CommandVmcall, &CommandVmcallHelp, DEBUGGER_COMMAND_VMCALL_ATTRIBUTES};

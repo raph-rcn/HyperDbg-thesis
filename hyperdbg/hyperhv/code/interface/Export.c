@@ -155,89 +155,9 @@ VmFuncSetPmcVmexit(BOOLEAN Set)
  * @return BOOLEAN
  */
 BOOLEAN
-VmFuncHdecDescriptorTableExitingSupported()
+VmFuncDescriptorTableExitingSupported()
 {
     return HvIsDescriptorTableExitingSupported();
-}
-
-/**
- * @brief Configure private HDEC descriptor-table detector metadata
- *
- * @param Enable Whether to enable the detector filter
- * @param ProcessId Target process id
- * @param ProcessCr3 Target process CR3
- * @param ProcessName Target process image name
- * @param SampleId Caller supplied sample id
- * @return VOID
- */
-VOID
-VmFuncHdecSetDescriptorTableDetectorState(BOOLEAN Enable,
-                                          UINT32  ProcessId,
-                                          UINT64  ProcessCr3,
-                                          CHAR *  ProcessName,
-                                          CHAR *  SampleId)
-{
-    UINT64 PreviousProcessObject = g_HdecDescriptorTableState.ProcessObject;
-
-    if (!Enable && g_HdecDescriptorTableState.Enabled)
-    {
-        LogInfo("[HDEC] stats pid=%x cr3=%llx process_object=%llx target_vmexits=%lld object_matches=%lld target_cpuid=%lld desc_exits=%lld desc_matches=%lld gp_exits=%lld gp_matches=%lld gp_read_fail=%lld gp_decode_fail=%lld logs=%lld",
-                g_HdecDescriptorTableState.ProcessId,
-                g_HdecDescriptorTableState.ProcessCr3,
-                g_HdecDescriptorTableState.ProcessObject,
-                g_HdecDescriptorTableState.TargetVmexitCount,
-                g_HdecDescriptorTableState.ProcessObjectMatchCount,
-                g_HdecDescriptorTableState.TargetCpuidExitCount,
-                g_HdecDescriptorTableState.DescriptorExitCount,
-                g_HdecDescriptorTableState.DescriptorExitMatchCount,
-                g_HdecDescriptorTableState.GeneralProtectionExitCount,
-                g_HdecDescriptorTableState.GeneralProtectionMatchCount,
-                g_HdecDescriptorTableState.GeneralProtectionReadFailureCount,
-                g_HdecDescriptorTableState.GeneralProtectionDecodeFailureCount,
-                g_HdecDescriptorTableState.RuntimeLogCount);
-    }
-
-    g_HdecDescriptorTableState.Enabled = FALSE;
-
-    if (PreviousProcessObject != 0)
-    {
-        ObDereferenceObject((PVOID)(ULONG_PTR)PreviousProcessObject);
-    }
-
-    RtlZeroMemory(&g_HdecDescriptorTableState, sizeof(g_HdecDescriptorTableState));
-
-    if (!Enable)
-    {
-        return;
-    }
-
-    g_HdecDescriptorTableState.ProcessId = ProcessId;
-    g_HdecDescriptorTableState.ProcessCr3 = ProcessCr3 & ~0xfffULL;
-
-    {
-        PEPROCESS TargetProcess = NULL;
-
-        if (NT_SUCCESS(PsLookupProcessByProcessId((HANDLE)(ULONG_PTR)ProcessId, &TargetProcess)))
-        {
-            g_HdecDescriptorTableState.ProcessObject = (UINT64)(ULONG_PTR)TargetProcess;
-        }
-    }
-
-    if (ProcessName != NULL)
-    {
-        RtlStringCbCopyA(g_HdecDescriptorTableState.ProcessName,
-                         sizeof(g_HdecDescriptorTableState.ProcessName),
-                         ProcessName);
-    }
-
-    if (SampleId != NULL)
-    {
-        RtlStringCbCopyA(g_HdecDescriptorTableState.SampleId,
-                         sizeof(g_HdecDescriptorTableState.SampleId),
-                         SampleId);
-    }
-
-    g_HdecDescriptorTableState.Enabled = TRUE;
 }
 
 /**

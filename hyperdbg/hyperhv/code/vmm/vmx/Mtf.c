@@ -35,11 +35,11 @@ MtfHandleVmexit(VIRTUAL_MACHINE_STATE * VCpu)
     //
     // Re-enable descriptor-table exiting after descriptor-table transparent pass-through.
     //
-    if (VCpu->HdecDescriptorTableRestoreOnMtf)
+    if (VCpu->DescriptorTableRestoreOnMtf)
     {
-        VCpu->HdecDescriptorTableRestoreOnMtf = FALSE;
+        VCpu->DescriptorTableRestoreOnMtf = FALSE;
 
-        if (g_HdecDescriptorTableState.Enabled || g_TriggerEventForDescriptorTables)
+        if (g_TriggerEventForDescriptorTables)
         {
             HvSetDescriptorTableExiting(VCpu, TRUE);
         }
