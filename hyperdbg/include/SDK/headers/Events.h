@@ -386,6 +386,14 @@ typedef struct _DEBUGGER_GENERAL_EVENT_DETAIL
                       // only that 0xffffffff means that we have to
                       // apply it to all processes
 
+    UINT32 LengthOfProcessName; // when nonzero, the event also matches when
+                                // PsGetProcessImageFileName(PsGetCurrentProcess())
+                                // case-insensitively equals the trailing
+                                // ProcessName bytes (laid out after the
+                                // condition buffer in the variable-length
+                                // tail of this struct). When zero, only the
+                                // ProcessId filter applies.
+
     BOOLEAN IsEnabled;
 
     BOOLEAN EnableShortCircuiting; // indicates whether the short-circuiting event

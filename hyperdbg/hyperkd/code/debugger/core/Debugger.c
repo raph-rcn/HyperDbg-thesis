@@ -358,6 +358,8 @@ DebuggerCreateEvent(BOOLEAN                           Enabled,
                     DEBUGGER_EVENT_OPTIONS *          Options,
                     UINT32                            ConditionsBufferSize,
                     PVOID                             ConditionBuffer,
+                    UINT32                            LengthOfProcessName,
+                    PVOID                             ProcessNameBuffer,
                     PDEBUGGER_EVENT_AND_ACTION_RESULT ResultsToReturn,
                     BOOLEAN                           InputFromVmxRoot)
 {
@@ -469,6 +471,26 @@ DebuggerCreateEvent(BOOLEAN                           Enabled,
     Event->EventType      = EventType;
     Event->Tag            = Tag;
     Event->CountOfActions = 0; // currently there is no action
+
+    //
+    // Copy the optional process-name filter. Sizes greater than the
+    // EPROCESS->ImageFileName cap (15 chars) are silently truncated;
+    // the user-mode parser also enforces this, so the truncation is
+    // a defense-in-depth check.
+    //
+    Event->LengthOfProcessName = 0;
+    RtlZeroMemory(Event->ProcessName, sizeof(Event->ProcessName));
+    if (ProcessNameBuffer != NULL && LengthOfProcessName != 0)
+    {
+        UINT32 NameCopyLen = LengthOfProcessName;
+        if (NameCopyLen >= sizeof(Event->ProcessName))
+        {
+            NameCopyLen = sizeof(Event->ProcessName) - 1;
+        }
+        RtlCopyMemory(Event->ProcessName, ProcessNameBuffer, NameCopyLen);
+        Event->ProcessName[NameCopyLen] = '\0';
+        Event->LengthOfProcessName       = NameCopyLen;
+    }
 
     //
     // Copy Options
@@ -1148,14 +1170,55 @@ DebuggerTriggerEvents(VMM_EVENT_TYPE_ENUM                   EventType,
         }
 
         //
-        // Check if this event is for this process or not
+        // Check if this event is for this process or not.
         //
-        if (CurrentEvent->ProcessId != DEBUGGER_EVENT_APPLY_TO_ALL_PROCESSES && CurrentEvent->ProcessId != HANDLE_TO_UINT32(PsGetCurrentProcessId()))
+        // The PID and the optional process-name filter are evaluated as
+        // INDEPENDENT gates: an event whose ProcessId is not "all" must
+        // also match the current PID, AND an event whose
+        // LengthOfProcessName is non-zero must also match the current
+        // process image-file name. A user that wants OR semantics passes
+        // `pid all name X`; the parser already coerces ProcessId to
+        // APPLY_TO_ALL_PROCESSES when only `name` is given.
+        //
+        if (CurrentEvent->ProcessId != DEBUGGER_EVENT_APPLY_TO_ALL_PROCESSES &&
+            CurrentEvent->ProcessId != HANDLE_TO_UINT32(PsGetCurrentProcessId()))
+        {
+            continue;
+        }
+
+        if (CurrentEvent->LengthOfProcessName != 0)
         {
             //
-            // This event is not related to either our process or all processes
+            // PsGetProcessImageFileName returns a pointer into the current
+            // EPROCESS->ImageFileName field — a fixed-size 15-byte UCHAR
+            // array. Comparison is case-insensitive to match how user-mode
+            // tools (and Windows itself) treat process names.
             //
-            continue;
+            PCHAR CurrentImageFileName = (PCHAR)PsGetProcessImageFileName(PsGetCurrentProcess());
+            if (CurrentImageFileName == NULL ||
+                _strnicmp((const char *)CurrentImageFileName,
+                          (const char *)CurrentEvent->ProcessName,
+                          CurrentEvent->LengthOfProcessName) != 0)
+            {
+                continue;
+            }
+
+            //
+            // Reject prefix matches: the current image-file name must end
+            // exactly where the filter does (so `chrome` does not match
+            // `chrome_helper.exe`). EPROCESS->ImageFileName is only 15
+            // bytes wide; when LengthOfProcessName == 15 the filter has
+            // already consumed the entire field and a tail-byte read at
+            // offset 15 would step past it into the next EPROCESS member
+            // (PriorityClass, etc.). In that case _strnicmp covered the
+            // full 15 bytes so a prefix match is impossible by
+            // construction — skip the tail check.
+            //
+            if (CurrentEvent->LengthOfProcessName < 15 &&
+                CurrentImageFileName[CurrentEvent->LengthOfProcessName] != '\0')
+            {
+                continue;
+            }
         }
 
         //
@@ -3147,6 +3210,19 @@ DebuggerParseEvent(PDEBUGGER_GENERAL_EVENT_DETAIL    EventDetails,
     //
     // We initialize event with disabled mode as it doesn't have action yet
     //
+    //
+    // Compute pointer to the optional process-name filter that lives in
+    // the variable-length tail right after the condition buffer.
+    //
+    PVOID ProcessNameTailPtr = NULL;
+    if (EventDetails->LengthOfProcessName != 0)
+    {
+        ProcessNameTailPtr =
+            (PVOID)((UINT64)EventDetails +
+                    sizeof(DEBUGGER_GENERAL_EVENT_DETAIL) +
+                    EventDetails->ConditionBufferSize);
+    }
+
     if (EventDetails->ConditionBufferSize != 0)
     {
         //
@@ -3160,6 +3236,8 @@ DebuggerParseEvent(PDEBUGGER_GENERAL_EVENT_DETAIL    EventDetails,
                                     &EventDetails->Options,
                                     EventDetails->ConditionBufferSize,
                                     (PVOID)((UINT64)EventDetails + sizeof(DEBUGGER_GENERAL_EVENT_DETAIL)),
+                                    EventDetails->LengthOfProcessName,
+                                    ProcessNameTailPtr,
                                     ResultsToReturn,
                                     InputFromVmxRoot);
     }
@@ -3176,6 +3254,8 @@ DebuggerParseEvent(PDEBUGGER_GENERAL_EVENT_DETAIL    EventDetails,
                                     &EventDetails->Options,
                                     0,
                                     NULL,
+                                    EventDetails->LengthOfProcessName,
+                                    ProcessNameTailPtr,
                                     ResultsToReturn,
                                     InputFromVmxRoot);
     }

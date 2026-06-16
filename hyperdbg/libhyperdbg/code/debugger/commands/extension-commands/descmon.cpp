@@ -60,7 +60,7 @@ CommandDescmonHelp()
 {
     ShowMessages("!descmon : monitors execution of descriptor-table instructions.\n\n");
 
-    ShowMessages("syntax : \t!descmon [all|sidt|sgdt|sldt|str] [pid ProcessId (hex)] [core CoreId (hex)] "
+    ShowMessages("syntax : \t!descmon [all|sidt|sgdt|sldt|str] [pid ProcessId (hex)] [name ImageFileName (string)] [core CoreId (hex)] "
                  "[imm IsImmediate (yesno)] [sc EnableShortCircuiting (onoff)] [stage CallingStage (prepostall)] "
                  "[buffer PreAllocatedBuffer (hex)] [script { Script (string) }] [asm condition { Condition (assembly/hex) }] "
                  "[asm code { Code (assembly/hex) }] [output {OutputName (string)}]\n");

@@ -1727,6 +1727,8 @@ InterpretGeneralEventAndActionsFields(
     BOOLEAN                               HasCodeBuffer                    = FALSE;
     BOOLEAN                               HasScript                        = FALSE;
     BOOLEAN                               IsNextCommandPid                 = FALSE;
+    BOOLEAN                               IsNextCommandName                = FALSE;
+    BOOLEAN                               UserSpecifiedPidClause           = FALSE;
     BOOLEAN                               IsNextCommandCoreId              = FALSE;
     BOOLEAN                               IsNextCommandBufferSize          = FALSE;
     BOOLEAN                               IsNextCommandImmediateMessaging  = FALSE;
@@ -1735,6 +1737,7 @@ InterpretGeneralEventAndActionsFields(
     BOOLEAN                               ImmediateMessagePassing          = UseImmediateMessagingByDefaultOnEvents;
     UINT32                                CoreId;
     UINT32                                ProcessId;
+    string                                ProcessNameFilter;
     UINT32                                IndexOfValidSourceTags;
     UINT32                                RequestBuffer = 0;
     PLIST_ENTRY                           TempList;
@@ -2065,7 +2068,17 @@ InterpretGeneralEventAndActionsFields(
 
   */
 
-    LengthOfEventBuffer = sizeof(DEBUGGER_GENERAL_EVENT_DETAIL) + ConditionBufferLength;
+    //
+    // Variable-length tail layout when both buffers are present:
+    //   [DEBUGGER_GENERAL_EVENT_DETAIL]
+    //   [ConditionBuffer       (ConditionBufferLength bytes)]
+    //   [ProcessName            (LengthOfProcessName bytes, no NUL)]
+    // The kernel reads the condition buffer at offset
+    // sizeof(struct) and the process name at offset
+    // sizeof(struct) + ConditionBufferSize.
+    //
+    UINT32 LengthOfProcessName = (UINT32)ProcessNameFilter.size();
+    LengthOfEventBuffer = sizeof(DEBUGGER_GENERAL_EVENT_DETAIL) + ConditionBufferLength + LengthOfProcessName;
 
     TempEvent = (PDEBUGGER_GENERAL_EVENT_DETAIL)malloc(LengthOfEventBuffer);
     RtlZeroMemory(TempEvent, LengthOfEventBuffer);
@@ -2140,6 +2153,18 @@ InterpretGeneralEventAndActionsFields(
         // Set the size of the buffer for event condition
         //
         TempEvent->ConditionBufferSize = ConditionBufferLength;
+    }
+
+    //
+    // Append the process-name filter (if any) immediately after the
+    // condition buffer in the variable-length tail.
+    //
+    if (LengthOfProcessName != 0)
+    {
+        memcpy((PVOID)((UINT64)TempEvent + sizeof(DEBUGGER_GENERAL_EVENT_DETAIL) + ConditionBufferLength),
+               ProcessNameFilter.data(),
+               LengthOfProcessName);
+        TempEvent->LengthOfProcessName = LengthOfProcessName;
     }
 
     //
@@ -2419,6 +2444,7 @@ InterpretGeneralEventAndActionsFields(
                 TempEvent->ProcessId = ProcessId;
             }
 
+            UserSpecifiedPidClause = TRUE;
             IsNextCommandPid = FALSE;
 
             //
@@ -2426,6 +2452,56 @@ InterpretGeneralEventAndActionsFields(
             //
             IndexesToRemove.push_back(Index);
 
+            continue;
+        }
+
+        if (IsNextCommandName)
+        {
+            //
+            // The token following "name" is the case-insensitive process
+            // basename to filter on (e.g. "explorer.exe"). The kernel
+            // matches it against PsGetProcessImageFileName which is capped
+            // at 15 chars, so the filter is truncated to fit.
+            //
+            ProcessNameFilter = GetCaseSensitiveStringFromCommandToken(Section);
+            if (ProcessNameFilter.empty())
+            {
+                ShowMessages("err, name is empty\n");
+                *ReasonForErrorInParsing = DEBUGGER_EVENT_PARSING_ERROR_CAUSE_FORMAT_ERROR;
+                goto ReturnWithError;
+            }
+
+            //
+            // Process names from PsGetProcessImageFileName are bounded at
+            // 15 characters; longer filters are silently truncated. Warn the
+            // user so they don't expect more than the kernel can match.
+            //
+            if (ProcessNameFilter.size() > 15)
+            {
+                ShowMessages(
+                    "warning, process name filter '%s' truncated to 15 chars to "
+                    "match EPROCESS->ImageFileName\n",
+                    ProcessNameFilter.c_str());
+                ProcessNameFilter.resize(15);
+            }
+
+            //
+            // If the user did NOT pass a `pid` clause, fall through to
+            // name-only filtering by clearing the implicit ProcessId that
+            // was set earlier (either from the active user-mode debug
+            // session or from the APPLY_TO_ALL default). The kernel
+            // evaluates pid and name as an AND, so leaving the implicit
+            // ProcessId in place would silently constrain `name X` events
+            // to only fire on the active debug pid. The user can still
+            // intersect with a pid by explicitly writing `pid X name Y`.
+            //
+            if (!UserSpecifiedPidClause)
+            {
+                TempEvent->ProcessId = DEBUGGER_EVENT_APPLY_TO_ALL_PROCESSES;
+            }
+
+            IsNextCommandName = FALSE;
+            IndexesToRemove.push_back(Index);
             continue;
         }
 
@@ -2463,6 +2539,12 @@ InterpretGeneralEventAndActionsFields(
             //
             IndexesToRemove.push_back(Index);
 
+            continue;
+        }
+        if (CompareLowerCaseStrings(Section, "name"))
+        {
+            IsNextCommandName = TRUE;
+            IndexesToRemove.push_back(Index);
             continue;
         }
         if (CompareLowerCaseStrings(Section, "core"))
@@ -2553,6 +2635,13 @@ InterpretGeneralEventAndActionsFields(
 
         *ReasonForErrorInParsing = DEBUGGER_EVENT_PARSING_ERROR_CAUSE_FORMAT_ERROR;
 
+        goto ReturnWithError;
+    }
+
+    if (IsNextCommandName)
+    {
+        ShowMessages("err, please specify a value for 'name'\n");
+        *ReasonForErrorInParsing = DEBUGGER_EVENT_PARSING_ERROR_CAUSE_FORMAT_ERROR;
         goto ReturnWithError;
     }
 

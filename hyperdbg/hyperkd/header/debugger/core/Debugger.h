@@ -119,6 +119,13 @@ typedef struct _DEBUGGER_EVENT
     ProcessId; // determines the pid to apply this event to, if it's
                // 0xffffffff means that we have to apply it to all processes
 
+    UINT32 LengthOfProcessName; // length of ProcessName in bytes (excluding NUL)
+                                // 0 = no name filter; rely on ProcessId only.
+
+    CHAR ProcessName[16];       // case-insensitive process name to match against
+                                // PsGetProcessImageFileName(). Sized to match
+                                // EPROCESS->ImageFileName (15 + NUL).
+
     LIST_ENTRY ActionsListHead; // Each entry is in DEBUGGER_EVENT_ACTION struct
     UINT32     CountOfActions;  // The total count of actions
 
@@ -204,6 +211,8 @@ DebuggerCreateEvent(BOOLEAN                           Enabled,
                     DEBUGGER_EVENT_OPTIONS *          Options,
                     UINT32                            ConditionsBufferSize,
                     PVOID                             ConditionBuffer,
+                    UINT32                            LengthOfProcessName,
+                    PVOID                             ProcessNameBuffer,
                     PDEBUGGER_EVENT_AND_ACTION_RESULT ResultsToReturn,
                     BOOLEAN                           InputFromVmxRoot);
 

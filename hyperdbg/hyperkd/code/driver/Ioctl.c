@@ -327,6 +327,43 @@ DrvDispatchIoControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
             DebuggerNewEventRequest = (PDEBUGGER_GENERAL_EVENT_DETAIL)Irp->AssociatedIrp.SystemBuffer;
 
             //
+            // Validate that the variable-length tail (condition buffer +
+            // optional process-name filter) fits inside the IOCTL input
+            // buffer. The kernel reads bytes at offset
+            //   sizeof(struct) + ConditionBufferSize
+            // and copies up to LengthOfProcessName trailing bytes; without
+            // this check, user-mode could pass a struct-sized buffer with
+            // inflated length fields and trick the kernel into reading
+            // adjacent system-pool memory into Event->ProcessName.
+            //
+            {
+                ULONG TotalRequiredBytes = sizeof(DEBUGGER_GENERAL_EVENT_DETAIL);
+                if (DebuggerNewEventRequest->ConditionBufferSize > InBuffLength - TotalRequiredBytes)
+                {
+                    Status = STATUS_INVALID_PARAMETER;
+                    LogError("Err, IOCTL_DEBUGGER_REGISTER_EVENT condition buffer overflow");
+                    break;
+                }
+                TotalRequiredBytes += DebuggerNewEventRequest->ConditionBufferSize;
+                if (DebuggerNewEventRequest->LengthOfProcessName > InBuffLength - TotalRequiredBytes)
+                {
+                    Status = STATUS_INVALID_PARAMETER;
+                    LogError("Err, IOCTL_DEBUGGER_REGISTER_EVENT process-name length overflow");
+                    break;
+                }
+                //
+                // Defense in depth: clamp LengthOfProcessName here so the
+                // kernel-side trigger code never sees a value larger than
+                // the EPROCESS->ImageFileName field even if a future code
+                // path forgets the cap inside DebuggerCreateEvent.
+                //
+                if (DebuggerNewEventRequest->LengthOfProcessName > 15)
+                {
+                    DebuggerNewEventRequest->LengthOfProcessName = 15;
+                }
+            }
+
+            //
             // Both usermode and to send to usermode and the coming buffer are
             // at the same place (not coming from the VMX-root mode)
             //
