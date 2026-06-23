@@ -93,6 +93,9 @@ typedef enum _PROCESS_KILL_METHODS
 BOOLEAN
 CommonIsProcessExist(UINT32 ProcId);
 
+BOOLEAN
+CommonFindProcessIdByImageFileName(PVOID ProcessNameBuffer, UINT32 LengthOfProcessName, PUINT32 ProcessId);
+
 PCHAR
 CommonGetProcessNameFromProcessControlBlock(PEPROCESS Eprocess);
 

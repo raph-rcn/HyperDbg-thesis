@@ -366,7 +366,21 @@ ApplyEventEptHookExecCcEvent(PDEBUGGER_EVENT                   Event,
         //
         if (Event->ProcessId == DEBUGGER_EVENT_APPLY_TO_ALL_PROCESSES || Event->ProcessId == 0)
         {
-            TempProcessId = HANDLE_TO_UINT32(PsGetCurrentProcessId());
+            if (Event->LengthOfProcessName != 0)
+            {
+                if (!CommonFindProcessIdByImageFileName(Event->ProcessName,
+                                                        Event->LengthOfProcessName,
+                                                        &TempProcessId))
+                {
+                    ResultsToReturn->IsSuccessful = FALSE;
+                    ResultsToReturn->Error        = DEBUGGER_ERROR_INVALID_ADDRESS;
+                    goto EventNotApplied;
+                }
+            }
+            else
+            {
+                TempProcessId = HANDLE_TO_UINT32(PsGetCurrentProcessId());
+            }
         }
         else
         {
@@ -470,7 +484,21 @@ ApplyEventEpthookInlineEvent(PDEBUGGER_EVENT                   Event,
         //
         if (Event->ProcessId == DEBUGGER_EVENT_APPLY_TO_ALL_PROCESSES || Event->ProcessId == 0)
         {
-            TempProcessId = HANDLE_TO_UINT32(PsGetCurrentProcessId());
+            if (Event->LengthOfProcessName != 0)
+            {
+                if (!CommonFindProcessIdByImageFileName(Event->ProcessName,
+                                                        Event->LengthOfProcessName,
+                                                        &TempProcessId))
+                {
+                    ResultsToReturn->IsSuccessful = FALSE;
+                    ResultsToReturn->Error        = DEBUGGER_ERROR_INVALID_ADDRESS;
+                    goto EventNotApplied;
+                }
+            }
+            else
+            {
+                TempProcessId = HANDLE_TO_UINT32(PsGetCurrentProcessId());
+            }
         }
         else
         {

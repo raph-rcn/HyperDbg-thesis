@@ -253,6 +253,7 @@ ValidateEventEptHookHiddenBreakpointAndInlineHooks(PDEBUGGER_GENERAL_EVENT_DETAI
                                                    BOOLEAN                           InputFromVmxRoot)
 {
     UINT32 TempPid;
+    PVOID  ProcessNameTailPtr = NULL;
 
     //
     // First check if the address are valid
@@ -261,7 +262,26 @@ ValidateEventEptHookHiddenBreakpointAndInlineHooks(PDEBUGGER_GENERAL_EVENT_DETAI
 
     if (TempPid == DEBUGGER_EVENT_APPLY_TO_ALL_PROCESSES)
     {
-        TempPid = HANDLE_TO_UINT32(PsGetCurrentProcessId());
+        if (!InputFromVmxRoot && EventDetails->LengthOfProcessName != 0)
+        {
+            ProcessNameTailPtr =
+                (PVOID)((UINT64)EventDetails +
+                        sizeof(DEBUGGER_GENERAL_EVENT_DETAIL) +
+                        EventDetails->ConditionBufferSize);
+
+            if (!CommonFindProcessIdByImageFileName(ProcessNameTailPtr,
+                                                    EventDetails->LengthOfProcessName,
+                                                    &TempPid))
+            {
+                ResultsToReturn->IsSuccessful = FALSE;
+                ResultsToReturn->Error        = DEBUGGER_ERROR_INVALID_ADDRESS;
+                return FALSE;
+            }
+        }
+        else
+        {
+            TempPid = HANDLE_TO_UINT32(PsGetCurrentProcessId());
+        }
     }
 
     //

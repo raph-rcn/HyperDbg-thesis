@@ -77,7 +77,10 @@ VmxHandleTripleFaults(VIRTUAL_MACHINE_STATE * VCpu)
     CommonWriteDebugInformation(VCpu);
 
     //
-    // We won't further continue after this error
+    // Do not execute DbgBreakPoint() from VMX-root. On systems without a
+    // kernel debugger attached, a debug break in this path can turn the
+    // original fatal condition into EXCEPTION_ON_INVALID_STACK or another
+    // nested trap, obscuring the actual root cause.
     //
-    DbgBreakPoint();
+    HvSuppressRipIncrement(VCpu);
 }

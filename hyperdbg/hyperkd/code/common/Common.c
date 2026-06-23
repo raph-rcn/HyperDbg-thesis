@@ -11,6 +11,34 @@
  */
 #include "pch.h"
 
+#define SYSTEM_PROCESS_INFORMATION_CLASS 5
+#define INITIAL_PROCESS_LIST_QUERY_SIZE 0x10000
+#define MAX_PROCESS_LIST_QUERY_SIZE     0x400000
+
+typedef struct _HYPERDBG_SYSTEM_PROCESS_INFORMATION
+{
+    ULONG           NextEntryOffset;
+    ULONG           NumberOfThreads;
+    LARGE_INTEGER   WorkingSetPrivateSize;
+    ULONG           HardFaultCount;
+    ULONG           NumberOfThreadsHighWatermark;
+    ULONGLONG       CycleTime;
+    LARGE_INTEGER   CreateTime;
+    LARGE_INTEGER   UserTime;
+    LARGE_INTEGER   KernelTime;
+    UNICODE_STRING  ImageName;
+    KPRIORITY       BasePriority;
+    HANDLE          UniqueProcessId;
+    PVOID           Reserved2;
+} HYPERDBG_SYSTEM_PROCESS_INFORMATION, *PHYPERDBG_SYSTEM_PROCESS_INFORMATION;
+
+NTSYSAPI NTSTATUS NTAPI
+ZwQuerySystemInformation(
+    ULONG  SystemInformationClass,
+    PVOID  SystemInformation,
+    ULONG  SystemInformationLength,
+    PULONG ReturnLength);
+
 /**
  * @brief Checks whether the process with ProcId exists or not
  *
@@ -38,6 +66,116 @@ CommonIsProcessExist(UINT32 ProcId)
 
         return TRUE;
     }
+}
+
+/**
+ * @brief Finds a currently running process by PsGetProcessImageFileName()
+ *
+ * @details this function should NOT be called from vmx-root mode
+ *
+ * @param ProcessNameBuffer EPROCESS ImageFileName-compatible basename
+ * @param LengthOfProcessName Length in bytes, excluding NUL
+ * @param ProcessId Receives the matching process id
+ *
+ * @return BOOLEAN Returns true if a matching process exists
+ */
+BOOLEAN
+CommonFindProcessIdByImageFileName(PVOID ProcessNameBuffer, UINT32 LengthOfProcessName, PUINT32 ProcessId)
+{
+    NTSTATUS                               Status;
+    ULONG                                  BufferSize = INITIAL_PROCESS_LIST_QUERY_SIZE;
+    ULONG                                  ReturnLength;
+    PVOID                                  Buffer = NULL;
+    PHYPERDBG_SYSTEM_PROCESS_INFORMATION   ProcessInfo;
+    PEPROCESS                              Eprocess = NULL;
+    PCHAR                                  ImageFileName;
+
+    if (ProcessNameBuffer == NULL || ProcessId == NULL || LengthOfProcessName == 0)
+    {
+        return FALSE;
+    }
+
+    if (LengthOfProcessName >= 16)
+    {
+        LengthOfProcessName = 15;
+    }
+
+    for (;;)
+    {
+        Buffer = PlatformMemAllocateZeroedNonPagedPool(BufferSize);
+        if (Buffer == NULL)
+        {
+            return FALSE;
+        }
+
+        ReturnLength = 0;
+        Status       = ZwQuerySystemInformation(SYSTEM_PROCESS_INFORMATION_CLASS,
+                                                Buffer,
+                                                BufferSize,
+                                                &ReturnLength);
+        if (Status == STATUS_INFO_LENGTH_MISMATCH)
+        {
+            PlatformMemFreePool(Buffer);
+            Buffer = NULL;
+
+            if (ReturnLength > BufferSize)
+            {
+                BufferSize = ReturnLength + PAGE_SIZE;
+            }
+            else
+            {
+                BufferSize = BufferSize * 2;
+            }
+
+            if (BufferSize > MAX_PROCESS_LIST_QUERY_SIZE)
+            {
+                return FALSE;
+            }
+
+            continue;
+        }
+
+        if (!NT_SUCCESS(Status))
+        {
+            PlatformMemFreePool(Buffer);
+            return FALSE;
+        }
+
+        break;
+    }
+
+    ProcessInfo = (PHYPERDBG_SYSTEM_PROCESS_INFORMATION)Buffer;
+    for (;;)
+    {
+        if (ProcessInfo->UniqueProcessId != NULL &&
+            NT_SUCCESS(PsLookupProcessByProcessId(ProcessInfo->UniqueProcessId, &Eprocess)))
+        {
+            ImageFileName = CommonGetProcessNameFromProcessControlBlock(Eprocess);
+            if (ImageFileName != NULL &&
+                _strnicmp((const char *)ImageFileName,
+                          (const char *)ProcessNameBuffer,
+                          LengthOfProcessName) == 0 &&
+                (LengthOfProcessName >= 15 || ImageFileName[LengthOfProcessName] == '\0'))
+            {
+                *ProcessId = HANDLE_TO_UINT32(ProcessInfo->UniqueProcessId);
+                ObDereferenceObject(Eprocess);
+                PlatformMemFreePool(Buffer);
+                return TRUE;
+            }
+
+            ObDereferenceObject(Eprocess);
+        }
+
+        if (ProcessInfo->NextEntryOffset == 0)
+        {
+            break;
+        }
+
+        ProcessInfo = (PHYPERDBG_SYSTEM_PROCESS_INFORMATION)((UINT64)ProcessInfo + ProcessInfo->NextEntryOffset);
+    }
+
+    PlatformMemFreePool(Buffer);
+    return FALSE;
 }
 
 /**

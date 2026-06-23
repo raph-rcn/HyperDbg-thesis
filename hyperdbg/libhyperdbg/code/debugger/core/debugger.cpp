@@ -2069,13 +2069,38 @@ InterpretGeneralEventAndActionsFields(
   */
 
     //
+    // Pre-scan the command for a process-name filter before allocating the
+    // variable-length event buffer. The main parser below still validates and
+    // consumes the tokens, but the allocation size and tail copy need the name
+    // before TempEvent exists.
+    //
+    for (size_t TokenIndex = 0; TokenIndex < CommandTokens->size(); TokenIndex++)
+    {
+        if (!CompareLowerCaseStrings(CommandTokens->at(TokenIndex), "name"))
+        {
+            continue;
+        }
+
+        if (TokenIndex + 1 >= CommandTokens->size())
+        {
+            break;
+        }
+
+        ProcessNameFilter = GetCaseSensitiveStringFromCommandToken(CommandTokens->at(TokenIndex + 1));
+        if (ProcessNameFilter.size() > 15)
+        {
+            ProcessNameFilter.resize(15);
+        }
+        break;
+    }
+
+    //
     // Variable-length tail layout when both buffers are present:
     //   [DEBUGGER_GENERAL_EVENT_DETAIL]
     //   [ConditionBuffer       (ConditionBufferLength bytes)]
-    //   [ProcessName            (LengthOfProcessName bytes, no NUL)]
-    // The kernel reads the condition buffer at offset
-    // sizeof(struct) and the process name at offset
-    // sizeof(struct) + ConditionBufferSize.
+    //   [ProcessName           (LengthOfProcessName bytes, no NUL)]
+    // The kernel reads the condition buffer at offset sizeof(struct) and the
+    // process name at offset sizeof(struct) + ConditionBufferSize.
     //
     UINT32 LengthOfProcessName = (UINT32)ProcessNameFilter.size();
     LengthOfEventBuffer = sizeof(DEBUGGER_GENERAL_EVENT_DETAIL) + ConditionBufferLength + LengthOfProcessName;
