@@ -1187,7 +1187,6 @@ EptHandleEptViolation(VIRTUAL_MACHINE_STATE * VCpu)
     }
 
     LogError("Err, unexpected EPT violation at RIP: %llx", VCpu->LastVmexitRip);
-    DbgBreakPoint();
     //
     // Redo the instruction that caused the exception
     //
