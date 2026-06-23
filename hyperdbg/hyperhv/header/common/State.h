@@ -139,6 +139,12 @@ typedef struct _VMM_EPT_PAGE_TABLE
      */
     LIST_ENTRY DynamicSplitList;
 
+    /**
+     * @brief Direct lookup for dynamically split 2MB pages.
+     * Indexed as (PML3 index * 512) + PML2 index and points to the base PML1 VA.
+     */
+    PEPT_PML1_ENTRY * SplitPml1Lookup;
+
 } VMM_EPT_PAGE_TABLE, *PVMM_EPT_PAGE_TABLE;
 
 //////////////////////////////////////////////////

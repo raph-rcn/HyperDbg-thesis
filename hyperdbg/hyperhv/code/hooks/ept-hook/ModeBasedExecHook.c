@@ -280,6 +280,12 @@ ModeBasedExecHookUninitialize()
     BroadcasDisableMbecOnAllProcessors();
 
     //
+    // MBEC changes how EPT execute permissions are interpreted. Flush stale
+    // combined translations after disabling it and before publishing teardown.
+    //
+    BroadcastNotifyAllToInvalidateEptAllCores();
+
+    //
     // Indicate that MBEC is disabled
     //
     g_ModeBasedExecutionControlState = FALSE;

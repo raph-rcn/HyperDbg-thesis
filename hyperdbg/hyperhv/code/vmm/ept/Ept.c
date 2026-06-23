@@ -294,25 +294,37 @@ EptBuildMtrrMap(VOID)
 }
 
 /**
- * @brief Resolve the split PML1 VA that belongs to a given PML2 entry
+ * @brief Compute the direct split-PML1 lookup index for a PML3/PML2 pair
+ *
+ * @param DirectoryPointer PML3 index
+ * @param Directory PML2 index
+ * @return SIZE_T Index into VMM_EPT_PAGE_TABLE.SplitPml1Lookup
+ */
+_Must_inspect_result_
+static SIZE_T
+EptGetSplitPml1LookupIndex(_In_ SIZE_T DirectoryPointer, _In_ SIZE_T Directory)
+{
+    return (DirectoryPointer * VMM_EPT_PML2E_COUNT) + Directory;
+}
+
+/**
+ * @brief Resolve the split PML1 VA using direct per-EPT-table metadata
  *
  * @param EptPageTable The EPT page table
- * @param TargetEntry The target PML2 entry
+ * @param DirectoryPointer PML3 index
+ * @param Directory PML2 index
  * @return PEPT_PML1_ENTRY Returns base VA of PML1 page, or NULL if not tracked
  */
 _Must_inspect_result_
 static PEPT_PML1_ENTRY
-EptGetSplitPml1VaByPml2Entry(_In_ PVMM_EPT_PAGE_TABLE EptPageTable, _In_ PEPT_PML2_ENTRY TargetEntry)
+EptGetSplitPml1VaByIndex(_In_ PVMM_EPT_PAGE_TABLE EptPageTable, _In_ SIZE_T DirectoryPointer, _In_ SIZE_T Directory)
 {
-    LIST_FOR_EACH_LINK(EptPageTable->DynamicSplitList, VMM_EPT_DYNAMIC_SPLIT, DynamicSplitList, CurrentSplit)
+    if (!EptPageTable || !EptPageTable->SplitPml1Lookup)
     {
-        if (CurrentSplit->Fields.Entry == TargetEntry)
-        {
-            return &CurrentSplit->PML1[0];
-        }
+        return NULL;
     }
 
-    return NULL;
+    return EptPageTable->SplitPml1Lookup[EptGetSplitPml1LookupIndex(DirectoryPointer, Directory)];
 }
 
 /**
@@ -328,6 +340,11 @@ EptGetPml1Entry(PVMM_EPT_PAGE_TABLE EptPageTable, SIZE_T PhysicalAddress)
     SIZE_T          Directory, DirectoryPointer, PML4Entry;
     PEPT_PML2_ENTRY PML2;
     PEPT_PML1_ENTRY PML1;
+
+    if (!EptPageTable)
+    {
+        return NULL;
+    }
 
     Directory        = ADDRMASK_EPT_PML2_INDEX(PhysicalAddress);
     DirectoryPointer = ADDRMASK_EPT_PML3_INDEX(PhysicalAddress);
@@ -354,7 +371,7 @@ EptGetPml1Entry(PVMM_EPT_PAGE_TABLE EptPageTable, SIZE_T PhysicalAddress)
     //
     // Resolve the split PML1 VA that was recorded during EptSplitLargePage
     //
-    PML1 = EptGetSplitPml1VaByPml2Entry(EptPageTable, PML2);
+    PML1 = EptGetSplitPml1VaByIndex(EptPageTable, DirectoryPointer, Directory);
 
     if (!PML1)
     {
@@ -386,6 +403,11 @@ EptGetPml1OrPml2Entry(PVMM_EPT_PAGE_TABLE EptPageTable, SIZE_T PhysicalAddress, 
     PEPT_PML2_ENTRY PML2;
     PEPT_PML1_ENTRY PML1;
 
+    if (!EptPageTable || !IsLargePage)
+    {
+        return NULL;
+    }
+
     Directory        = ADDRMASK_EPT_PML2_INDEX(PhysicalAddress);
     DirectoryPointer = ADDRMASK_EPT_PML3_INDEX(PhysicalAddress);
     PML4Entry        = ADDRMASK_EPT_PML4_INDEX(PhysicalAddress);
@@ -412,7 +434,7 @@ EptGetPml1OrPml2Entry(PVMM_EPT_PAGE_TABLE EptPageTable, SIZE_T PhysicalAddress, 
     //
     // Resolve the split PML1 VA that was recorded during EptSplitLargePage
     //
-    PML1 = EptGetSplitPml1VaByPml2Entry(EptPageTable, PML2);
+    PML1 = EptGetSplitPml1VaByIndex(EptPageTable, DirectoryPointer, Directory);
 
     if (!PML1)
     {
@@ -474,8 +496,21 @@ EptSplitLargePage(PVMM_EPT_PAGE_TABLE EptPageTable,
     PVMM_EPT_DYNAMIC_SPLIT NewSplit;
     EPT_PML1_ENTRY         EntryTemplate;
     SIZE_T                 EntryIndex;
+    SIZE_T                 LookupIndex;
+    SIZE_T                 Directory;
+    SIZE_T                 DirectoryPointer;
     PEPT_PML2_ENTRY        TargetEntry;
     EPT_PML2_POINTER       NewPointer;
+
+    if (!EptPageTable || !EptPageTable->SplitPml1Lookup)
+    {
+        LogError("Err, split PML1 lookup table is not initialized");
+        return FALSE;
+    }
+
+    Directory        = ADDRMASK_EPT_PML2_INDEX(PhysicalAddress);
+    DirectoryPointer = ADDRMASK_EPT_PML3_INDEX(PhysicalAddress);
+    LookupIndex      = EptGetSplitPml1LookupIndex(DirectoryPointer, Directory);
 
     //
     // Find the PML2 entry that's currently used
@@ -589,6 +624,13 @@ EptSplitLargePage(PVMM_EPT_PAGE_TABLE EptPageTable,
     NewPointer.PageFrameNumber = (SIZE_T)VirtualAddressToPhysicalAddress(&NewSplit->PML1[0]) / PAGE_SIZE;
 
     //
+    // Publish direct split metadata before replacing the PML2 entry. VM-exit
+    // paths must not walk DynamicSplitList while interrupts are disabled.
+    //
+    EptPageTable->SplitPml1Lookup[LookupIndex] = &NewSplit->PML1[0];
+    KeMemoryBarrier();
+
+    //
     // Now, replace the entry in the page table with our new split pointer
     //
     RtlCopyMemory(TargetEntry, &NewPointer, sizeof(NewPointer));
@@ -695,6 +737,15 @@ EptAllocateAndCreateIdentityPageTable(VOID)
     if (PageTable == NULL)
     {
         LogError("Err, failed to allocate memory for PageTable");
+        return NULL;
+    }
+
+    PageTable->SplitPml1Lookup = (PEPT_PML1_ENTRY *)PlatformMemAllocateZeroedNonPagedPool(VMM_EPT_PML3E_COUNT * VMM_EPT_PML2E_COUNT * sizeof(PEPT_PML1_ENTRY));
+
+    if (PageTable->SplitPml1Lookup == NULL)
+    {
+        LogError("Err, failed to allocate split PML1 lookup table");
+        MmFreeContiguousMemory(PageTable);
         return NULL;
     }
 
@@ -878,6 +929,12 @@ EptLogicalProcessorInitialize(VOID)
             {
                 if (g_GuestState[j].EptPageTable != NULL)
                 {
+                    if (g_GuestState[j].EptPageTable->SplitPml1Lookup != NULL)
+                    {
+                        PlatformMemFreePool(g_GuestState[j].EptPageTable->SplitPml1Lookup);
+                        g_GuestState[j].EptPageTable->SplitPml1Lookup = NULL;
+                    }
+
                     MmFreeContiguousMemory(g_GuestState[j].EptPageTable);
                     g_GuestState[j].EptPageTable = NULL;
                 }
@@ -1003,6 +1060,12 @@ EptHandlePageHookExit(VIRTUAL_MACHINE_STATE *              VCpu,
                     // Pointer to the page entry in the page table
                     //
                     TargetPage = EptGetPml1Entry(VCpu->EptPageTable, HookedEntry->PhysicalBaseAddress);
+
+                    if (!TargetPage)
+                    {
+                        LogError("Err, failed to get PML1 entry for hooked physical address: 0x%llx", HookedEntry->PhysicalBaseAddress);
+                        break;
+                    }
 
                     //
                     // Restore to its original entry for one instruction
@@ -1172,6 +1235,12 @@ EptSetPML1AndInvalidateTLB(VIRTUAL_MACHINE_STATE * VCpu,
                            EPT_PML1_ENTRY          EntryValue,
                            INVEPT_TYPE             InvalidationType)
 {
+    if (!EntryAddress)
+    {
+        LogError("Err, attempted to set a null EPT PML1 entry");
+        return;
+    }
+
     //
     // set the value
     //
@@ -1243,6 +1312,12 @@ EptCheckAndHandleEptHookBreakpoints(VIRTUAL_MACHINE_STATE * VCpu, UINT64 GuestRi
                     // Pointer to the page entry in the page table
                     //
                     TargetPage = EptGetPml1Entry(VCpu->EptPageTable, HookedEntry->PhysicalBaseAddress);
+
+                    if (!TargetPage)
+                    {
+                        LogError("Err, failed to get PML1 entry for hidden hook physical address: 0x%llx", HookedEntry->PhysicalBaseAddress);
+                        break;
+                    }
 
                     //
                     // Restore to its original entry for one instruction

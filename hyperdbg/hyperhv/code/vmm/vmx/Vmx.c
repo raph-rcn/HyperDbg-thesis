@@ -1289,6 +1289,12 @@ VmxPerformTermination()
     {
         if (g_GuestState[i].EptPageTable != NULL)
         {
+            if (g_GuestState[i].EptPageTable->SplitPml1Lookup != NULL)
+            {
+                PlatformMemFreePool(g_GuestState[i].EptPageTable->SplitPml1Lookup);
+                g_GuestState[i].EptPageTable->SplitPml1Lookup = NULL;
+            }
+
             MmFreeContiguousMemory(g_GuestState[i].EptPageTable);
         }
 
