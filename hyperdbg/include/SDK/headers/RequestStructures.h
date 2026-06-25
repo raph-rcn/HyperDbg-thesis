@@ -12,9 +12,6 @@
 #pragma once
 #include "Pcie.h"
 
-/* ==============================================================================================
- */
-
 #define SIZEOF_DEBUGGER_READ_PAGE_TABLE_ENTRIES_DETAILS \
     sizeof(DEBUGGER_READ_PAGE_TABLE_ENTRIES_DETAILS)
 

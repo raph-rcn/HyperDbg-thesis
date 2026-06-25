@@ -12,82 +12,6 @@
  */
 #include "pch.h"
 
-static VOID
-DebuggerEnterActiveOperation()
-{
-    InterlockedIncrement(&g_DebuggerActiveOperations);
-}
-
-static VOID
-DebuggerLeaveActiveOperation()
-{
-    InterlockedDecrement(&g_DebuggerActiveOperations);
-}
-
-static LONG
-DebuggerQueryActiveOperations()
-{
-    return InterlockedCompareExchange(&g_DebuggerActiveOperations, 0, 0);
-}
-
-static BOOLEAN
-DebuggerTryEnterEventOperation()
-{
-    if (!g_EnableDebuggerEvents || g_DebuggerUninitializing)
-    {
-        return FALSE;
-    }
-
-    DebuggerEnterActiveOperation();
-
-    if (!g_EnableDebuggerEvents || g_DebuggerUninitializing)
-    {
-        DebuggerLeaveActiveOperation();
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-static BOOLEAN
-DebuggerTryEnterScriptOperation()
-{
-    if (g_DebuggerUninitializing)
-    {
-        return FALSE;
-    }
-
-    DebuggerEnterActiveOperation();
-
-    if (g_DebuggerUninitializing)
-    {
-        DebuggerLeaveActiveOperation();
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-static VOID
-DebuggerWaitForActiveOperationsToDrain()
-{
-    LARGE_INTEGER DelayInterval = {0};
-
-    DelayInterval.QuadPart = -10 * 1000; // 1 ms, relative.
-
-    while (DebuggerQueryActiveOperations() != 0)
-    {
-        if (KeGetCurrentIrql() <= APC_LEVEL)
-        {
-            KeDelayExecutionThread(KernelMode, FALSE, &DelayInterval);
-        }
-        else
-        {
-            KeStallExecutionProcessor(50);
-        }
-    }
-}
-
 /**
  * @brief A wrapper for GetRegValue() in script-engine
  *
@@ -193,8 +117,6 @@ DebuggerInitialize()
     //
     // Enabled Debugger Events
     //
-    g_DebuggerActiveOperations = 0;
-    g_DebuggerUninitializing   = FALSE;
     g_EnableDebuggerEvents = TRUE;
 
     //
@@ -338,15 +260,7 @@ DebuggerUninitialize()
     //
     // Disable triggering events
     //
-    g_DebuggerUninitializing = TRUE;
-    g_EnableDebuggerEvents   = FALSE;
-
-    //
-    // Event callbacks can run on other cores at VM-exit time. Wait for any
-    // handler that observed the old enabled state before freeing event and
-    // script-engine buffers.
-    //
-    DebuggerWaitForActiveOperationsToDrain();
+    g_EnableDebuggerEvents = FALSE;
 
     //
     // Clear all events (Check if the kernel debugger is enable
@@ -1198,36 +1112,16 @@ DebuggerTriggerEvents(VMM_EVENT_TYPE_ENUM                   EventType,
     PLIST_ENTRY                      TempList        = 0;
     PLIST_ENTRY                      TempList2       = 0;
     const PVOID                      OriginalContext = Context;
-    VMM_CALLBACK_TRIGGERING_EVENT_STATUS_TYPE Result = VMM_CALLBACK_TRIGGERING_EVENT_STATUS_SUCCESSFUL;
 
     //
-    // Check if triggering debugging actions are allowed or not, and make this
-    // callback visible to teardown before touching event/action lists.
+    // Check if triggering debugging actions are allowed or not
     //
-    if (!DebuggerTryEnterEventOperation())
+    if (!g_EnableDebuggerEvents || g_InterceptBreakpointsAndEventsForCommandsInRemoteComputer)
     {
         //
         // Debugger is not enabled
         //
         return VMM_CALLBACK_TRIGGERING_EVENT_STATUS_DEBUGGER_NOT_ENABLED;
-    }
-
-    if (g_InterceptBreakpointsAndEventsForCommandsInRemoteComputer)
-    {
-        DebuggerLeaveActiveOperation();
-        return VMM_CALLBACK_TRIGGERING_EVENT_STATUS_DEBUGGER_NOT_ENABLED;
-    }
-
-    if (g_DbgState == NULL)
-    {
-        Result = VMM_CALLBACK_TRIGGERING_EVENT_STATUS_DEBUGGER_NOT_ENABLED;
-        goto EventTriggeringFinished;
-    }
-
-    if (g_Events == NULL)
-    {
-        Result = VMM_CALLBACK_TRIGGERING_EVENT_STATUS_DEBUGGER_NOT_ENABLED;
-        goto EventTriggeringFinished;
     }
 
     //
@@ -1248,8 +1142,7 @@ DebuggerTriggerEvents(VMM_EVENT_TYPE_ENUM                   EventType,
 
     if (TempList == NULL)
     {
-        Result = VMM_CALLBACK_TRIGGERING_EVENT_STATUS_INVALID_EVENT_TYPE;
-        goto EventTriggeringFinished;
+        return VMM_CALLBACK_TRIGGERING_EVENT_STATUS_INVALID_EVENT_TYPE;
     }
 
     while (TempList2 != TempList->Flink)
@@ -1694,20 +1587,15 @@ DebuggerTriggerEvents(VMM_EVENT_TYPE_ENUM                   EventType,
         //
         // Event should be ignored
         //
-        Result = VMM_CALLBACK_TRIGGERING_EVENT_STATUS_SUCCESSFUL_IGNORE_EVENT;
+        return VMM_CALLBACK_TRIGGERING_EVENT_STATUS_SUCCESSFUL_IGNORE_EVENT;
     }
     else
     {
         //
         // Event shouldn't be ignored
         //
-        Result = VMM_CALLBACK_TRIGGERING_EVENT_STATUS_SUCCESSFUL;
+        return VMM_CALLBACK_TRIGGERING_EVENT_STATUS_SUCCESSFUL;
     }
-
-EventTriggeringFinished:
-
-    DebuggerLeaveActiveOperation();
-    return Result;
 }
 
 /**
@@ -1787,17 +1675,6 @@ DebuggerPerformRunScript(PROCESSOR_DEBUGGING_STATE *        DbgState,
     ACTION_BUFFER                   ActionBuffer           = {0};
     SYMBOL                          ErrorSymbol            = {0};
     SCRIPT_ENGINE_GENERAL_REGISTERS ScriptGeneralRegisters = {0};
-    BOOLEAN                         Result                 = FALSE;
-
-    if (!DebuggerTryEnterScriptOperation())
-    {
-        return FALSE;
-    }
-
-    if (DbgState == NULL || EventTriggerDetail == NULL)
-    {
-        goto RunScriptFinished;
-    }
 
     if (Action != NULL)
     {
@@ -1862,12 +1739,7 @@ DebuggerPerformRunScript(PROCESSOR_DEBUGGING_STATE *        DbgState,
         //
         // The parameters are wrong !
         //
-        goto RunScriptFinished;
-    }
-
-    if (DbgState->ScriptEngineCoreSpecificStackBuffer == NULL || g_ScriptGlobalVariables == NULL)
-    {
-        goto RunScriptFinished;
+        return FALSE;
     }
 
     //
@@ -1910,12 +1782,7 @@ DebuggerPerformRunScript(PROCESSOR_DEBUGGING_STATE *        DbgState,
         EXECUTENUMBER++;
     }
 
-    Result = TRUE;
-
-RunScriptFinished:
-
-    DebuggerLeaveActiveOperation();
-    return Result;
+    return TRUE;
 }
 
 /**

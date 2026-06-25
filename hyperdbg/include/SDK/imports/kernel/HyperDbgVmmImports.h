@@ -258,12 +258,6 @@ IMPORT_EXPORT_VMM VOID
 ConfigureDisableDescriptorTableExitingOnAllProcessors();
 
 IMPORT_EXPORT_VMM VOID
-ConfigureEnableDescriptorTableExitingOnlyOnAllProcessors();
-
-IMPORT_EXPORT_VMM VOID
-ConfigureDisableDescriptorTableExitingOnlyOnAllProcessors();
-
-IMPORT_EXPORT_VMM VOID
 ConfigureEnableEferSyscallEventsOnAllProcessors();
 
 IMPORT_EXPORT_VMM VOID

@@ -64,9 +64,6 @@ VOID
 ExecTrapRestoreToNormalEptp(VIRTUAL_MACHINE_STATE * VCpu);
 
 VOID
-ExecTrapChangeToNormalMbecEptp(VIRTUAL_MACHINE_STATE * VCpu);
-
-VOID
 ExecTrapHandleMoveToAdjustedTrapState(VIRTUAL_MACHINE_STATE * VCpu, DEBUGGER_EVENT_MODE_TYPE TargetMode);
 
 VOID

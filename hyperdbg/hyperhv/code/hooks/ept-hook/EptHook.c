@@ -735,12 +735,6 @@ EptHookRestoreAllHooksToOriginalEntry(VIRTUAL_MACHINE_STATE * VCpu)
         //
         TargetPage = EptGetPml1Entry(VCpu->EptPageTable, HookedEntry->PhysicalBaseAddress);
 
-        if (!TargetPage)
-        {
-            LogError("Err, failed to get PML1 entry while restoring hooked physical address: 0x%llx", HookedEntry->PhysicalBaseAddress);
-            continue;
-        }
-
         //
         // Apply the hook to EPT
         //
@@ -1989,22 +1983,10 @@ VOID
 EptHookHandleMonitorTrapFlag(VIRTUAL_MACHINE_STATE * VCpu)
 {
     PVOID TargetPage;
-
-    if (!VCpu->MtfEptHookRestorePoint)
-    {
-        return;
-    }
-
     //
     // Pointer to the page entry in the page table
     //
     TargetPage = EptGetPml1Entry(VCpu->EptPageTable, VCpu->MtfEptHookRestorePoint->PhysicalBaseAddress);
-
-    if (!TargetPage)
-    {
-        LogError("Err, failed to get PML1 entry while restoring MTF hook physical address: 0x%llx", VCpu->MtfEptHookRestorePoint->PhysicalBaseAddress);
-        return;
-    }
 
     //
     // restore the hooked state

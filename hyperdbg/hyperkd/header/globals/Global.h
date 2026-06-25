@@ -115,18 +115,6 @@ UINT32 g_LastError;
 BOOLEAN g_EnableDebuggerEvents;
 
 /**
- * @brief Determines whether debugger teardown is in progress
- *
- */
-BOOLEAN g_DebuggerUninitializing;
-
-/**
- * @brief Counts active debugger event/script operations that can touch event or script state
- *
- */
-volatile LONG g_DebuggerActiveOperations;
-
-/**
  * @brief List header of breakpoints for debugger-mode
  *
  */

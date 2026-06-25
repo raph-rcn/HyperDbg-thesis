@@ -480,13 +480,6 @@ VOID
 ExecTrapRestoreToNormalEptp(VIRTUAL_MACHINE_STATE * VCpu)
 {
     //
-    // Restore MBEC execute permissions before switching back to the normal
-    // EPTP. Otherwise a stale execute-denied translation can outlive
-    // exec-trap teardown and later surface as an unexpected EPT violation.
-    //
-    ExecTrapChangeToNormalMbecEptp(VCpu);
-
-    //
     // Change EPTP
     //
     __vmx_vmwrite(VMCS_CTRL_EPT_POINTER, VCpu->EptPointer.AsUInt);

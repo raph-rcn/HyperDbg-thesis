@@ -333,18 +333,6 @@
  */
 #define VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING 0x00000033
 
-/**
- * @brief VMCALL to enable only descriptor-table exiting
- *
- */
-#define VMCALL_SET_DESCRIPTOR_TABLE_EXITING_ONLY 0x00000034
-
-/**
- * @brief VMCALL to disable only descriptor-table exiting
- *
- */
-#define VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING_ONLY 0x00000035
-
 //////////////////////////////////////////////////
 //				    Functions					//
 //////////////////////////////////////////////////

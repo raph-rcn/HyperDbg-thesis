@@ -558,15 +558,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
 
         break;
     }
-    case VMCALL_SET_DESCRIPTOR_TABLE_EXITING_ONLY:
-    {
-        BOOLEAN DescriptorTableApplied;
-
-        DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
-        VmcallStatus = DescriptorTableApplied ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
-
-        break;
-    }
     case VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING:
     {
         UINT32  ExceptionBitmapAfter = 0;
@@ -595,22 +586,6 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
 
         VmcallStatus =
             (DescriptorTableApplied && GeneralProtectionApplied) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
-
-        break;
-    }
-    case VMCALL_UNSET_DESCRIPTOR_TABLE_EXITING_ONLY:
-    {
-        BOOLEAN DescriptorTableApplied;
-
-        if (g_TriggerEventForDescriptorTables)
-        {
-            DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, TRUE);
-        }
-        else
-        {
-            DescriptorTableApplied = HvSetDescriptorTableExiting(VCpu, FALSE);
-        }
-        VmcallStatus = DescriptorTableApplied ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 
         break;
     }

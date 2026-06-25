@@ -273,11 +273,12 @@ IdtEmulationhandleHostInterrupt(_Inout_ INTERRUPT_TRAP_FRAME * IntrTrapFrame)
         //
         // host exceptions
         //
-        LogError("Host exception, rip: %llx, rsp: %llx, error: %llx, vector: %x",
-                 IntrTrapFrame->rip,
-                 IntrTrapFrame->rsp,
-                 IntrTrapFrame->error,
-                 IntrTrapFrame->vector);
+        LogInfo("Host exception, rip: %llx, rsp: %llx, error: %llx, vector: %x",
+                IntrTrapFrame->rip,
+                IntrTrapFrame->rsp,
+                IntrTrapFrame->error,
+                IntrTrapFrame->vector);
+        DbgBreakPoint();
 
         break;
     }

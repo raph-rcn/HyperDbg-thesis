@@ -132,6 +132,8 @@ ApplyEventMonitorEvent(PDEBUGGER_EVENT                   Event,
 
     RemainingSize = TempEndAddress - TempStartAddress;
 
+    // LogInfo("Start address: %llx, end address: %llx", TempStartAddress, TempEndAddress, RemainingSize);
+
     for (size_t i = 0; i <= PagesBytes; i++)
     {
         if (RemainingSize >= PAGE_SIZE)
@@ -161,6 +163,11 @@ ApplyEventMonitorEvent(PDEBUGGER_EVENT                   Event,
                 RemainingSize  = 0;
             }
         }
+
+        // LogInfo("Start address: %llx, end address: %llx, remaining size: %llx",
+        //         TempStartAddress,
+        //         TempEndAddress,
+        //         RemainingSize);
 
         //
         // Setup hooking addresses
