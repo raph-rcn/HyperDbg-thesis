@@ -625,6 +625,63 @@ VmFuncSetTriggerEventForDescriptorTables(BOOLEAN Set)
 }
 
 /**
+ * @brief Set the cached descriptor-table (!descmon) process-name filters
+ *
+ * @details Called by hyperkd whenever the set of armed descriptor-table events
+ * changes (arm or teardown). The VMX-root handlers use this cache to skip the
+ * guest-memory read + decode for processes that cannot match any armed event.
+ *
+ * If @p Filters is NULL, @p Count is 0, or @p MatchAll is TRUE, the cache is
+ * put into a "match-all" (fail-open) state where the pre-match always passes,
+ * preserving the original machine-wide behavior. @p Count is clamped to
+ * DESCRIPTOR_TABLE_MAX_NAME_FILTERS; any overflow also forces match-all so no
+ * target process is silently dropped.
+ *
+ * @param Filters Array of process-name filters, or NULL
+ * @param Count Number of valid entries in @p Filters
+ * @param MatchAll TRUE to force fail-open (e.g. a name-less event is armed)
+ * @return VOID
+ */
+VOID
+VmFuncSetDescriptorTableProcessNameFilters(DESCRIPTOR_TABLE_NAME_FILTER * Filters,
+                                           UINT32                         Count,
+                                           BOOLEAN                        MatchAll)
+{
+    UINT32 i;
+
+    //
+    // The count is the publish gate read by the VMX-root matcher on other
+    // cores: it iterates [0, count). Drop it to 0 FIRST so that while we
+    // overwrite the filter array a concurrent reader sees an empty cache
+    // (fail-open, returns match) rather than a half-written entry, which could
+    // otherwise falsely suppress a real event. The real count is published
+    // LAST, after every entry is fully written.
+    //
+    g_DescriptorTableNameFilterCount = 0;
+
+    if (Filters == NULL || Count == 0 || MatchAll || Count > DESCRIPTOR_TABLE_MAX_NAME_FILTERS)
+    {
+        //
+        // Fail open: behave exactly as if no pre-filter existed.
+        //
+        g_DescriptorTableMatchAllProcesses = TRUE;
+        return;
+    }
+
+    for (i = 0; i < Count; i++)
+    {
+        g_DescriptorTableNameFilters[i] = Filters[i];
+    }
+
+    g_DescriptorTableMatchAllProcesses = FALSE;
+
+    //
+    // Publish the count last (gate open).
+    //
+    g_DescriptorTableNameFilterCount = Count;
+}
+
+/**
  * @brief VMX-root compatible strlen
  * @param s A pointer to the string
  *

@@ -117,6 +117,11 @@ IMPORT_EXPORT_VMM VOID
 VmFuncSetTriggerEventForDescriptorTables(BOOLEAN Set);
 
 IMPORT_EXPORT_VMM VOID
+VmFuncSetDescriptorTableProcessNameFilters(DESCRIPTOR_TABLE_NAME_FILTER * Filters,
+                                           UINT32                         Count,
+                                           BOOLEAN                        MatchAll);
+
+IMPORT_EXPORT_VMM VOID
 VmFuncSetInterruptibilityState(UINT64 InterruptibilityState);
 
 IMPORT_EXPORT_VMM VOID

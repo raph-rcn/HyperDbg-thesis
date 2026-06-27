@@ -182,6 +182,129 @@ DescriptorTableInstructionNameToType(CHAR * InstructionName)
 }
 
 /**
+ * @brief ASCII lower-case a single byte (VMX-root safe, no CRT/locale)
+ *
+ * @param C
+ * @return CHAR
+ */
+static CHAR
+DescriptorTableToLowerAscii(CHAR C)
+{
+    if (C >= 'A' && C <= 'Z')
+    {
+        return (CHAR)(C + ('a' - 'A'));
+    }
+    return C;
+}
+
+/**
+ * @brief Check whether the current process can match any armed !descmon event,
+ * using the name filters cached by hyperkd at arm time.
+ *
+ * @details This is the VMX-root pre-match that lets the descriptor-table
+ * handlers skip the expensive guest-memory read + instruction decode for
+ * processes that no armed event targets. The match logic intentionally mirrors
+ * hyperkd's DebuggerTriggerEvents exactly: case-insensitive comparison against
+ * EPROCESS->ImageFileName, capped at 15 bytes, with a tail check that rejects
+ * prefix matches (so "chrome" does not match "chrome_helper.exe").
+ *
+ * Fails open (returns TRUE) whenever the cache is in match-all mode or the
+ * current process name cannot be read, so this can only ever skip work for
+ * provably-non-matching processes; it never suppresses a real event. Both
+ * operands are resident non-paged kernel memory (the cached filter and the
+ * EPROCESS image-file name), so no CR3 switch or safe-memory mapper is needed.
+ *
+ * @return BOOLEAN TRUE if the current process may match an armed event
+ */
+static BOOLEAN
+DescriptorTableCurrentProcessMatches(VOID)
+{
+    PCHAR  CurrentImageFileName;
+    UINT32 i;
+
+    //
+    // Latch the filter count once. The writer
+    // (VmFuncSetDescriptorTableProcessNameFilters) publishes the count last, so
+    // a snapshot taken here is a consistent upper bound for the array entries
+    // that were fully written before this exit; clamp it defensively to the
+    // array size in case of a stale/torn observation on a weakly-ordered read.
+    //
+    UINT32 FilterCount = g_DescriptorTableNameFilterCount;
+
+    if (FilterCount > DESCRIPTOR_TABLE_MAX_NAME_FILTERS)
+    {
+        FilterCount = DESCRIPTOR_TABLE_MAX_NAME_FILTERS;
+    }
+
+    //
+    // Fail open: no cached filters, or a name-less (match-all) event is armed.
+    //
+    if (g_DescriptorTableMatchAllProcesses || FilterCount == 0)
+    {
+        return TRUE;
+    }
+
+    CurrentImageFileName = CommonGetProcessNameFromProcessControlBlock(PsGetCurrentProcess());
+
+    if (CurrentImageFileName == NULL)
+    {
+        //
+        // Cannot determine the current name; fail open so we never miss an event.
+        //
+        return TRUE;
+    }
+
+    for (i = 0; i < FilterCount; i++)
+    {
+        DESCRIPTOR_TABLE_NAME_FILTER * Filter = &g_DescriptorTableNameFilters[i];
+        UINT32                         j;
+        BOOLEAN                        Mismatch = FALSE;
+
+        if (Filter->Length == 0)
+        {
+            //
+            // A zero-length filter is match-all; should have been collapsed to
+            // g_DescriptorTableMatchAllProcesses upstream, but treat it safely.
+            //
+            return TRUE;
+        }
+
+        //
+        // Case-insensitive comparison over the filter length.
+        //
+        for (j = 0; j < Filter->Length; j++)
+        {
+            if (DescriptorTableToLowerAscii(CurrentImageFileName[j]) !=
+                DescriptorTableToLowerAscii(Filter->Name[j]))
+            {
+                Mismatch = TRUE;
+                break;
+            }
+        }
+
+        if (Mismatch)
+        {
+            continue;
+        }
+
+        //
+        // Reject prefix matches: the current name must end exactly where the
+        // filter does. EPROCESS->ImageFileName is only 15 bytes wide, so when
+        // the filter already consumed all 15 a tail read would step past the
+        // field — in that case the full-width compare already proves a match.
+        //
+        if (Filter->Length < 15 && CurrentImageFileName[Filter->Length] != '\0')
+        {
+            continue;
+        }
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+/**
  * @brief Observe #GP faults that may represent blocked user-mode descriptor instructions
  *
  * @param VCpu
@@ -205,9 +328,24 @@ DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_IN
 
     //
     // #GP is a fault. If HyperDbg re-injects it after the VM-exit, the guest
-    // must see the original faulting RIP, not the next instruction.
+    // must see the original faulting RIP, not the next instruction. This must
+    // happen for EVERY #GP (the exception bitmap is machine-wide and #GP has
+    // many unrelated causes), so it is done before the process pre-match below.
     //
     HvSuppressRipIncrement(VCpu);
+
+    //
+    // Pre-match the current process against the armed !descmon name filters.
+    // The #GP exception bitmap entry is machine-wide, so #GPs from every
+    // process on every core reach here while !descmon is armed. For a process
+    // that no armed event can target, skip the expensive guest-memory read and
+    // instruction decode entirely; RIP has already been suppressed, so the #GP
+    // is still faithfully re-injected to that process downstream.
+    //
+    if (!DescriptorTableCurrentProcessMatches())
+    {
+        return;
+    }
 
     if (!MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
                                                   InstructionBytes,
@@ -933,7 +1071,15 @@ DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReas
 {
     BOOLEAN  NativeDescriptorEventActive = g_TriggerEventForDescriptorTables;
 
-    if (NativeDescriptorEventActive)
+    //
+    // Descriptor-table exiting is a machine-wide VMCS control, so this fires for
+    // every SGDT/SIDT/SLDT/STR on any process (including frequent kernel uses).
+    // Only do the decode + event-trigger work when the current process can
+    // match an armed !descmon event. The MTF pass-through below is intentionally
+    // OUTSIDE this guard: the instruction has not executed yet and must be
+    // single-stepped to completion for every process regardless of the filter.
+    //
+    if (NativeDescriptorEventActive && DescriptorTableCurrentProcessMatches())
     {
         UCHAR                             InstructionBytes[MAXIMUM_INSTR_SIZE] = {0};
         CHAR *                            InstructionName                      = NULL;
