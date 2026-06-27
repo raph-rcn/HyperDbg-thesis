@@ -152,6 +152,27 @@ BOOLEAN g_TriggerEventForXsetbvs;
 
 BOOLEAN g_TriggerEventForDescriptorTables;
 
+/**
+ * @brief Cached process-name filters for the descriptor-table (!descmon)
+ * event, used by the VMX-root handlers to cheaply pre-match the current
+ * process before doing the expensive guest-memory read + instruction decode.
+ *
+ * The descriptor-table exiting control and the #GP exception bitmap entry are
+ * machine-wide, so every descriptor-table instruction and every #GP across the
+ * whole guest causes a VM-exit while !descmon is armed. The actual process
+ * scoping otherwise only happens far downstream in hyperkd's
+ * DebuggerTriggerEvents. These globals let hyperhv discard non-target exits
+ * before touching guest memory.
+ *
+ * Semantics: if g_DescriptorTableMatchAllProcesses is TRUE (a name-less event
+ * is armed, or the filter count overflowed the cache) the pre-match fails open
+ * and behaves exactly as before this optimization existed. Populated by
+ * VmFuncSetDescriptorTableProcessNameFilters from hyperkd at arm/teardown time.
+ */
+DESCRIPTOR_TABLE_NAME_FILTER g_DescriptorTableNameFilters[DESCRIPTOR_TABLE_MAX_NAME_FILTERS];
+UINT32                       g_DescriptorTableNameFilterCount;
+BOOLEAN                      g_DescriptorTableMatchAllProcesses;
+
 //////////////////////////////////////////////////
 //  	Global Variable (Execution Trap)	    //
 //////////////////////////////////////////////////

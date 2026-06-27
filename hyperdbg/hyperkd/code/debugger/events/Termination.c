@@ -1824,14 +1824,26 @@ TerminateXsetbvExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromVmxRoot)
 VOID
 TerminateDescriptorTableExecutionEvent(PDEBUGGER_EVENT Event, BOOLEAN InputFromVmxRoot)
 {
-    UNREFERENCED_PARAMETER(Event);
     UNREFERENCED_PARAMETER(InputFromVmxRoot);
 
     if (DebuggerEventListCount(&g_Events->DescriptorTableInstructionExecutionEventsHead) > 1)
     {
+        //
+        // Other descriptor-table events remain armed. Keep exiting on, but
+        // refresh the VMX-root name-filter cache so it no longer reflects the
+        // event being torn down. This event is still linked into the list at
+        // this point (DebuggerRemoveEvent unlinks it afterwards), so exclude it
+        // explicitly.
+        //
+        DebuggerRebuildDescriptorTableNameFilterCache(Event);
         return;
     }
 
+    //
+    // This was the last descriptor-table event: disable exiting and clear the
+    // pre-filter cache back to its inert (match-all) state.
+    //
     VmFuncSetTriggerEventForDescriptorTables(FALSE);
+    VmFuncSetDescriptorTableProcessNameFilters(NULL, 0, TRUE);
     ConfigureDisableDescriptorTableExitingOnAllProcessors();
 }

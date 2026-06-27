@@ -1360,6 +1360,15 @@ ApplyEventDescriptorTableExecutionEvent(PDEBUGGER_EVENT                   Event,
 
     Event->Options.OptionalParam1 = Event->InitOptions.OptionalParam1;
 
+    //
+    // Refresh the VMX-root process-name pre-filter cache from the full set of
+    // armed descriptor-table events (this one is already linked into the list
+    // by DebuggerRegisterEvent, which runs before this apply step). Populate
+    // the cache BEFORE enabling exiting so there is no window where the control
+    // is on with a stale or empty filter set.
+    //
+    DebuggerRebuildDescriptorTableNameFilterCache(NULL);
+
     VmFuncSetTriggerEventForDescriptorTables(TRUE);
     ConfigureEnableDescriptorTableExitingOnAllProcessors();
 

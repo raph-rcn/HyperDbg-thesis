@@ -304,6 +304,34 @@ typedef struct _DEBUGGER_EVENT_OPTIONS
 } DEBUGGER_EVENT_OPTIONS, *PDEBUGGER_EVENT_OPTIONS;
 
 //////////////////////////////////////////////////
+//   Descriptor-table process-name pre-filter   //
+//////////////////////////////////////////////////
+
+/**
+ * @brief Maximum number of descriptor-table (!descmon) process-name filters
+ * that VMX root can cache for the cheap pre-match. If more events than this
+ * are armed, the cache "fails open" (matches every process), so correctness
+ * is preserved and only the optimization is lost.
+ */
+#define DESCRIPTOR_TABLE_MAX_NAME_FILTERS 8
+
+/**
+ * @brief A single cached process-name filter for the descriptor-table event.
+ * Mirrors the kernel DEBUGGER_EVENT ProcessName/LengthOfProcessName fields so
+ * that the VMX-root pre-match in the #GP and descriptor-table-exit handlers can
+ * skip the expensive guest-memory read + decode for processes that can never
+ * match any armed !descmon event. The match logic must stay identical to
+ * DebuggerTriggerEvents (case-insensitive, 15-byte cap, exact-tail check).
+ */
+typedef struct _DESCRIPTOR_TABLE_NAME_FILTER
+{
+    CHAR   Name[16];  // case-insensitive image-file name (15 chars + NUL),
+                      // sized to match EPROCESS->ImageFileName
+    UINT32 Length;    // length of Name in bytes (excluding NUL)
+
+} DESCRIPTOR_TABLE_NAME_FILTER, *PDESCRIPTOR_TABLE_NAME_FILTER;
+
+//////////////////////////////////////////////////
 //    Enums For Event And Debugger Resources    //
 //////////////////////////////////////////////////
 

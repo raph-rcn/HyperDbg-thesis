@@ -129,6 +129,7 @@ DebuggerInitialize()
     //
     VmFuncSetTriggerEventForCpuids(FALSE);
     VmFuncSetTriggerEventForDescriptorTables(FALSE);
+    VmFuncSetDescriptorTableProcessNameFilters(NULL, 0, TRUE);
 
     //
     // Initialize script engines global variables holder
@@ -2111,6 +2112,75 @@ DebuggerEventListCount(PLIST_ENTRY TargetEventList)
     }
 
     return Counter;
+}
+
+/**
+ * @brief Rebuild the VMX-root descriptor-table process-name filter cache
+ *
+ * @details Walks the currently-armed descriptor-table events and pushes their
+ * process-name filters down to hyperhv, so the VMX-root #GP and
+ * descriptor-table-exit handlers can cheaply skip non-target processes before
+ * reading guest memory. If any armed event has no name filter
+ * (LengthOfProcessName == 0, i.e. match-all) or the number of name-filtered
+ * events exceeds the cache, the cache is forced into match-all (fail-open)
+ * mode, so correctness never depends on this optimization.
+ *
+ * Call this whenever the descriptor-table event set changes. @p EventToExclude
+ * lets the teardown path ignore the event that is about to be removed but is
+ * still linked into the list at that point (NULL to include everything).
+ *
+ * @param EventToExclude Event currently being torn down, or NULL
+ * @return VOID
+ */
+VOID
+DebuggerRebuildDescriptorTableNameFilterCache(PDEBUGGER_EVENT EventToExclude)
+{
+    PLIST_ENTRY                  TempList   = &g_Events->DescriptorTableInstructionExecutionEventsHead;
+    DESCRIPTOR_TABLE_NAME_FILTER Filters[DESCRIPTOR_TABLE_MAX_NAME_FILTERS];
+    UINT32                       Count    = 0;
+    BOOLEAN                      MatchAll = FALSE;
+
+    while (&g_Events->DescriptorTableInstructionExecutionEventsHead != TempList->Flink)
+    {
+        TempList                     = TempList->Flink;
+        PDEBUGGER_EVENT CurrentEvent = CONTAINING_RECORD(TempList, DEBUGGER_EVENT, EventsOfSameTypeList);
+
+        if (CurrentEvent == EventToExclude)
+        {
+            continue;
+        }
+
+        if (CurrentEvent->LengthOfProcessName == 0)
+        {
+            //
+            // A name-less event matches every process: the pre-filter must
+            // fail open and we can stop collecting names.
+            //
+            MatchAll = TRUE;
+            break;
+        }
+
+        if (Count >= DESCRIPTOR_TABLE_MAX_NAME_FILTERS)
+        {
+            //
+            // More distinct name filters than the cache can hold: fail open
+            // rather than silently dropping a target process.
+            //
+            MatchAll = TRUE;
+            break;
+        }
+
+        RtlZeroMemory(Filters[Count].Name, sizeof(Filters[Count].Name));
+        RtlCopyMemory(Filters[Count].Name,
+                      CurrentEvent->ProcessName,
+                      min(CurrentEvent->LengthOfProcessName, (UINT32)(sizeof(Filters[Count].Name) - 1)));
+        Filters[Count].Length = min(CurrentEvent->LengthOfProcessName, (UINT32)(sizeof(Filters[Count].Name) - 1));
+        Count++;
+    }
+
+    VmFuncSetDescriptorTableProcessNameFilters(MatchAll ? NULL : Filters,
+                                               MatchAll ? 0 : Count,
+                                               MatchAll);
 }
 
 /**

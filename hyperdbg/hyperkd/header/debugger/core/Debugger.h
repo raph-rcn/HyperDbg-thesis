@@ -271,6 +271,9 @@ UINT32
 DebuggerEventListCount(PLIST_ENTRY TargetEventList);
 
 VOID
+DebuggerRebuildDescriptorTableNameFilterCache(PDEBUGGER_EVENT EventToExclude);
+
+VOID
 DebuggerClearAllEvents(BOOLEAN InputFromVmxRoot, BOOLEAN PoolManagerAllocatedMemory);
 
 BOOLEAN
