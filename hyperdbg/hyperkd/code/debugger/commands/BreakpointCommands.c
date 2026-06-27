@@ -301,12 +301,15 @@ BreakpointCheckAndHandleDebugBreakpoint(UINT32 CoreId)
         else
         {
             //
-            // Here it means that the trap is supposed to be handled by
-            // HyperDbg but, we couldn't find any routines that gonna
-            // handle it (it's probably an error)
+            // A non-TF #DB can reach this path while transparent mode is
+            // intercepting debug exceptions globally. It belongs to the
+            // guest unless HyperDbg actually recorded the trap state.
             //
             HandledByDebuggerRoutines = FALSE;
-            LogError("Err, trap is supposed to be handled by the debugger, but none of routines handled it");
+            if (TrapSetByDebugger)
+            {
+                LogError("Err, trap is supposed to be handled by the debugger, but none of routines handled it");
+            }
         }
     }
     else

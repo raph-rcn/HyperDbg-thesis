@@ -311,7 +311,7 @@ DescriptorTableCurrentProcessMatches(VOID)
  * @param InterruptExit
  * @return VOID
  */
-static VOID
+static BOOLEAN
 DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_INFORMATION InterruptExit)
 {
     BOOLEAN                           NativeDescriptorEventActive = g_TriggerEventForDescriptorTables;
@@ -323,7 +323,7 @@ DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_IN
     if (!NativeDescriptorEventActive ||
         InterruptExit.Vector != EXCEPTION_VECTOR_GENERAL_PROTECTION_FAULT)
     {
-        return;
+        return FALSE;
     }
 
     //
@@ -344,14 +344,30 @@ DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_IN
     //
     if (!DescriptorTableCurrentProcessMatches())
     {
-        return;
+        return FALSE;
     }
 
     if (!MemoryMapperReadMemorySafeOnTargetProcess(VCpu->LastVmexitRip,
                                                   InstructionBytes,
                                                   MAXIMUM_INSTR_SIZE))
     {
-        return;
+        return FALSE;
+    }
+
+    // A CPL3 VMware backdoor probe (`in eax, dx`, port 0x5658/0x5659)
+    // raises #GP before I/O-bitmap interception. While a name-scoped descmon
+    // compatibility event is armed, return a benign non-VM result so tools
+    // such as ScoopyNG can continue to the APIs being traced. No other #GP is
+    // swallowed by this path.
+    if (InstructionBytes[0] == 0xed &&
+        ((VCpu->Regs->rdx & 0xffff) == 0x5658 ||
+         (VCpu->Regs->rdx & 0xffff) == 0x5659))
+    {
+        VCpu->Regs->rax = 0;
+        VCpu->Regs->rbx = 0;
+        VCpu->Regs->rcx = 0;
+        VmxVmwrite64(VMCS_GUEST_RIP, VCpu->LastVmexitRip + 1);
+        return TRUE;
     }
 
     InstructionName = DescriptorTableDecodeInstruction(InstructionBytes,
@@ -359,7 +375,7 @@ DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_IN
 
     if (InstructionName == NULL)
     {
-        return;
+        return FALSE;
     }
 
     DescriptorInstructionType = DescriptorTableInstructionNameToType(InstructionName);
@@ -372,6 +388,8 @@ DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_IN
                                  &PostEventTriggerReq,
                                  VCpu->Regs);
     }
+
+    return FALSE;
 }
 
 /**
@@ -1261,7 +1279,10 @@ DispatchEventException(VIRTUAL_MACHINE_STATE * VCpu)
     //
     VmxVmread32P(VMCS_VMEXIT_INTERRUPTION_INFORMATION, &InterruptExit.AsUInt);
 
-    DescriptorTableHandleException(VCpu, InterruptExit);
+    if (DescriptorTableHandleException(VCpu, InterruptExit))
+    {
+        return;
+    }
 
     //
     // This type of vm-exit, can be either because of an !exception event,

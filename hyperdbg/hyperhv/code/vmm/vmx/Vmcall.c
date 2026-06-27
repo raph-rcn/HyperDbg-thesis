@@ -277,7 +277,8 @@ VmxVmcallHandler(VIRTUAL_MACHINE_STATE * VCpu,
 
         HookResult = EptHookPerformPageHook(VCpu,
                                             (PVOID)OptionalParam1, /* TargetAddress */
-                                            ProcCr3);              /* process cr3 */
+                                            ProcCr3,               /* process cr3 */
+                                            (SIZE_T)OptionalParam3); /* pre-resolved physical page */
 
         VmcallStatus = (HookResult == TRUE) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 

@@ -107,6 +107,7 @@ ShowMessages(const char * Fmt, ...)
         va_start(Args, Fmt);
 
         vprintf(Fmt, Args);
+        fflush(stdout);
 
         va_end(Args);
 

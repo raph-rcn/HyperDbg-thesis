@@ -170,34 +170,30 @@ _Use_decl_annotations_
 UINT64
 VirtualAddressToPhysicalAddressByProcessId(PVOID VirtualAddress, UINT32 ProcessId)
 {
-    CR3_TYPE CurrentProcessCr3;
-    UINT64   PhysicalAddress;
+    KAPC_STATE ApcState;
+    PEPROCESS TargetProcess = NULL;
+    UINT64 PhysicalAddress = NULL64_ZERO;
 
-    //
-    // Switch to new process's memory layout
-    //
-    CurrentProcessCr3 = SwitchToProcessMemoryLayout(ProcessId);
-
-    //
-    // Validate if process id is valid
-    //
-    if (CurrentProcessCr3.Flags == NULL64_ZERO)
+    if (PsLookupProcessByProcessId((HANDLE)ProcessId, &TargetProcess) != STATUS_SUCCESS)
     {
-        //
-        // Pid is invalid
-        //
         return NULL64_ZERO;
     }
 
-    //
-    // Read the physical address based on new cr3
-    //
-    PhysicalAddress = MmGetPhysicalAddress(VirtualAddress).QuadPart;
-
-    //
-    // Restore the original process
-    //
-    SwitchToPreviousProcess(CurrentProcessCr3);
+    KeStackAttachProcess(TargetProcess, &ApcState);
+    __try
+    {
+        volatile UCHAR ResidentByte;
+        ProbeForRead(VirtualAddress, sizeof(UCHAR), sizeof(UCHAR));
+        ResidentByte = *(volatile UCHAR *)VirtualAddress;
+        UNREFERENCED_PARAMETER(ResidentByte);
+        PhysicalAddress = MmGetPhysicalAddress(VirtualAddress).QuadPart;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        PhysicalAddress = NULL64_ZERO;
+    }
+    KeUnstackDetachProcess(&ApcState);
+    ObDereferenceObject(TargetProcess);
 
     return PhysicalAddress;
 }

@@ -144,7 +144,8 @@ EptHookAllocateExtraHookingPagesForMemoryMonitorsAndExecEptHooks(UINT32 Count)
 static BOOLEAN
 EptHookCreateHookPage(_Inout_ VIRTUAL_MACHINE_STATE * VCpu,
                       _In_ PVOID                      TargetAddress,
-                      _In_ CR3_TYPE                   ProcessCr3)
+                      _In_ CR3_TYPE                   ProcessCr3,
+                      _In_ SIZE_T                     PhysicalBaseAddressHint)
 {
     ULONG                   ProcessorsCount;
     EPT_PML1_ENTRY          ChangedEntry;
@@ -176,7 +177,11 @@ EptHookCreateHookPage(_Inout_ VIRTUAL_MACHINE_STATE * VCpu,
     //
     // Find cr3 of target core
     //
-    PhysicalBaseAddress = (SIZE_T)VirtualAddressToPhysicalAddressByProcessCr3(VirtualTarget, ProcessCr3);
+    PhysicalBaseAddress = PhysicalBaseAddressHint;
+    if (!PhysicalBaseAddress)
+    {
+        PhysicalBaseAddress = (SIZE_T)VirtualAddressToPhysicalAddressByProcessCr3(VirtualTarget, ProcessCr3);
+    }
 
     //
     // If the physical address is NULL, it means that the address is not valid
@@ -249,27 +254,24 @@ EptHookCreateHookPage(_Inout_ VIRTUAL_MACHINE_STATE * VCpu,
     //
     TargetAddressInFakePageContent = EptHookCalcBreakpointOffset(TargetAddress, HookedPage);
 
-    //
-    // Switch to target process
-    //
-    Cr3OfCurrentProcess = SwitchToProcessMemoryLayoutByCr3(ProcessCr3);
-
-    //
-    // Copy the content to the fake page
-    // The following line can't be used in user mode addresses
-    // RtlCopyBytes(&HookedPage->FakePageContents, VirtualTarget, PAGE_SIZE);
-    //
-    MemoryMapperReadMemorySafe((UINT64)VirtualTarget, &HookedPage->FakePageContents, PAGE_SIZE);
+    if (PhysicalBaseAddressHint)
+    {
+        MemoryMapperReadMemorySafeByPhysicalAddress(
+            PhysicalBaseAddress,
+            (UINT64)&HookedPage->FakePageContents,
+            PAGE_SIZE);
+    }
+    else
+    {
+        Cr3OfCurrentProcess = SwitchToProcessMemoryLayoutByCr3(ProcessCr3);
+        MemoryMapperReadMemorySafe((UINT64)VirtualTarget, &HookedPage->FakePageContents, PAGE_SIZE);
+        SwitchToPreviousProcess(Cr3OfCurrentProcess);
+    }
 
     //
     // we set the breakpoint on the fake page
     //
     *(BYTE *)TargetAddressInFakePageContent = 0xcc;
-
-    //
-    // Restore to original process
-    //
-    SwitchToPreviousProcess(Cr3OfCurrentProcess);
 
     //
     // Split the 2MB page-table of each core to 4KB page-table
@@ -479,7 +481,8 @@ ExAllocatePoolWithTagHook(
 BOOLEAN
 EptHookPerformPageHook(VIRTUAL_MACHINE_STATE * VCpu,
                        PVOID                   TargetAddress,
-                       CR3_TYPE                ProcessCr3)
+                       CR3_TYPE                ProcessCr3,
+                       SIZE_T                  PhysicalBaseAddressHint)
 {
     SIZE_T                   PhysicalBaseAddress;
     PVOID                    VirtualTarget;
@@ -501,7 +504,11 @@ EptHookPerformPageHook(VIRTUAL_MACHINE_STATE * VCpu,
     //
     // Find cr3 of target core
     //
-    PhysicalBaseAddress = (SIZE_T)VirtualAddressToPhysicalAddressByProcessCr3(VirtualTarget, ProcessCr3);
+    PhysicalBaseAddress = PhysicalBaseAddressHint;
+    if (!PhysicalBaseAddress)
+    {
+        PhysicalBaseAddress = (SIZE_T)VirtualAddressToPhysicalAddressByProcessCr3(VirtualTarget, ProcessCr3);
+    }
 
     if (!PhysicalBaseAddress)
     {
@@ -530,7 +537,7 @@ EptHookPerformPageHook(VIRTUAL_MACHINE_STATE * VCpu,
     }
     else
     {
-        return EptHookCreateHookPage(VCpu, TargetAddress, ProcessCr3);
+        return EptHookCreateHookPage(VCpu, TargetAddress, ProcessCr3, PhysicalBaseAddressHint);
     }
 }
 
@@ -571,6 +578,31 @@ EptHookPerformHook(PVOID   TargetAddress,
     }
     else
     {
+        BOOLEAN IsKernelAddress    = FALSE;
+        SIZE_T  PhysicalBaseAddress = NULL64_ZERO;
+
+        if (!CheckAddressCanonicality((UINT64)TargetAddress, &IsKernelAddress))
+        {
+            VmmCallbackSetLastError(DEBUGGER_ERROR_INVALID_ADDRESS);
+            return FALSE;
+        }
+
+        // Process-scoped pre-resolution is needed for pageable user addresses.
+        // Kernel hooks such as KiSystemCall64 must retain the original CR3-based
+        // translation path because ProbeForRead rejects kernel virtual addresses.
+        if (!IsKernelAddress)
+        {
+            PhysicalBaseAddress = (SIZE_T)VirtualAddressToPhysicalAddressByProcessId(
+                PAGE_ALIGN(TargetAddress),
+                ProcessId);
+
+            if (!PhysicalBaseAddress)
+            {
+                VmmCallbackSetLastError(DEBUGGER_ERROR_INVALID_ADDRESS);
+                return FALSE;
+            }
+        }
+
         //
         // Broadcast to all cores to enable vm-exit for breakpoints (exception bitmaps)
         //
@@ -579,7 +611,7 @@ EptHookPerformHook(PVOID   TargetAddress,
         if (AsmVmxVmcall(VMCALL_SET_HIDDEN_CC_BREAKPOINT,
                          (UINT64)TargetAddress,
                          LayoutGetCr3ByProcessId(ProcessId).Flags,
-                         (UINT64)NULL64_ZERO) == STATUS_SUCCESS)
+                         (UINT64)PhysicalBaseAddress) == STATUS_SUCCESS)
         {
             LogDebugInfo("Hidden breakpoint hook applied from VMX Root Mode");
 
