@@ -439,12 +439,33 @@ BreakpointClearAndDeallocateMemory(PDEBUGGEE_BP_DESCRIPTOR BreakpointDesc)
 BOOLEAN
 BreakpointCheckAndHandleReApplyingBreakpoint(UINT32 CoreId)
 {
-    BOOLEAN                     Result   = FALSE;
-    PROCESSOR_DEBUGGING_STATE * DbgState = &g_DbgState[CoreId];
+    BOOLEAN                       Result          = FALSE;
+    PROCESSOR_DEBUGGING_STATE *   DbgState        = &g_DbgState[CoreId];
+    PDEBUGGEE_BP_DESCRIPTOR       BreakpointState = DbgState->SoftwareBreakpointState;
 
-    if (DbgState->SoftwareBreakpointState != NULL)
+    if (BreakpointState != NULL)
     {
         BYTE BreakpointByte = 0xcc;
+
+        //
+        // Consume this core-local state before dereferencing it. MTF is shared
+        // by several mechanisms, including descriptor-table pass-through, so a
+        // stale value must not be retried indefinitely from VMX-root.
+        //
+        DbgState->SoftwareBreakpointState = NULL;
+
+        //
+        // Breakpoint descriptors are allocated from kernel non-paged pool. A
+        // non-canonical or user-space value cannot be a valid descriptor and
+        // dereferencing it here would raise a host #GP on the VMX-root stack.
+        //
+        if ((UINT64)BreakpointState < 0xFFFF800000000000ull)
+        {
+            LogError("Err, invalid software breakpoint state on core %u: %llx",
+                     CoreId,
+                     (UINT64)BreakpointState);
+            return FALSE;
+        }
 
         //
         // MTF is handled
@@ -455,11 +476,9 @@ BreakpointCheckAndHandleReApplyingBreakpoint(UINT32 CoreId)
         // Restore previous breakpoint byte
         //
         MemoryMapperWriteMemorySafeByPhysicalAddress(
-            DbgState->SoftwareBreakpointState->PhysAddress,
+            BreakpointState->PhysAddress,
             (UINT64)&BreakpointByte,
             sizeof(BYTE));
-
-        DbgState->SoftwareBreakpointState = NULL;
     }
 
     return Result;
