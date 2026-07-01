@@ -340,7 +340,7 @@ typedef std::map<std::string, COMMAND_DETAIL> CommandType;
 
 #define DEBUGGER_COMMAND_MONITOR_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_EVENT
 
-#define DEBUGGER_COMMAND_DESCMON_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_EVENT
+#define DEBUGGER_COMMAND_REDPILL_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_EVENT
 
 #define DEBUGGER_COMMAND_VMCALL_ATTRIBUTES DEBUGGER_COMMAND_ATTRIBUTE_EVENT
 
@@ -532,7 +532,7 @@ VOID
 CommandMonitor(vector<CommandToken> CommandTokens, string Command);
 
 VOID
-CommandDescmon(vector<CommandToken> CommandTokens, string Command);
+CommandRedpill(vector<CommandToken> CommandTokens, string Command);
 
 VOID
 CommandSyscallAndSysret(vector<CommandToken> CommandTokens, string Command);
@@ -790,4 +790,4 @@ VOID
 CommandXsetbvHelp();
 
 VOID
-CommandDescmonHelp();
+CommandRedpillHelp();

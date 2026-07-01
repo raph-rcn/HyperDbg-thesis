@@ -114,7 +114,7 @@ set(SourceFiles
     "code/debugger/commands/extension-commands/epthook2.cpp"
     "code/debugger/commands/extension-commands/exception.cpp"
     "code/debugger/commands/extension-commands/hide.cpp"
-    "code/debugger/commands/extension-commands/descmon.cpp"
+    "code/debugger/commands/extension-commands/redpill.cpp"
     "code/debugger/commands/extension-commands/interrupt.cpp"
     "code/debugger/commands/extension-commands/ioin.cpp"
     "code/debugger/commands/extension-commands/ioout.cpp"

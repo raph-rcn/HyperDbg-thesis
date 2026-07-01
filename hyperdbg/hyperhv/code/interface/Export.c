@@ -625,7 +625,7 @@ VmFuncSetTriggerEventForDescriptorTables(BOOLEAN Set)
 }
 
 /**
- * @brief Set the cached descriptor-table (!descmon) process-name filters
+ * @brief Set the cached descriptor-table (!redpill) process-name filters
  *
  * @details Called by hyperkd whenever the set of armed descriptor-table events
  * changes (arm or teardown). The VMX-root handlers use this cache to skip the

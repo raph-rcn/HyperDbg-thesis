@@ -198,7 +198,7 @@ DescriptorTableToLowerAscii(CHAR C)
 }
 
 /**
- * @brief Check whether the current process can match any armed !descmon event,
+ * @brief Check whether the current process can match any armed !redpill event,
  * using the name filters cached by hyperkd at arm time.
  *
  * @details This is the VMX-root pre-match that lets the descriptor-table
@@ -335,9 +335,9 @@ DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_IN
     HvSuppressRipIncrement(VCpu);
 
     //
-    // Pre-match the current process against the armed !descmon name filters.
+    // Pre-match the current process against the armed !redpill name filters.
     // The #GP exception bitmap entry is machine-wide, so #GPs from every
-    // process on every core reach here while !descmon is armed. For a process
+    // process on every core reach here while !redpill is armed. For a process
     // that no armed event can target, skip the expensive guest-memory read and
     // instruction decode entirely; RIP has already been suppressed, so the #GP
     // is still faithfully re-injected to that process downstream.
@@ -355,7 +355,7 @@ DescriptorTableHandleException(VIRTUAL_MACHINE_STATE * VCpu, VMEXIT_INTERRUPT_IN
     }
 
     // A CPL3 VMware backdoor probe (`in eax, dx`, port 0x5658/0x5659)
-    // raises #GP before I/O-bitmap interception. While a name-scoped descmon
+    // raises #GP before I/O-bitmap interception. While a name-scoped redpill
     // compatibility event is armed, return a benign non-VM result so tools
     // such as ScoopyNG can continue to the APIs being traced. No other #GP is
     // swallowed by this path.
@@ -1093,7 +1093,7 @@ DispatchEventDescriptorTableAccess(VIRTUAL_MACHINE_STATE * VCpu, UINT32 ExitReas
     // Descriptor-table exiting is a machine-wide VMCS control, so this fires for
     // every SGDT/SIDT/SLDT/STR on any process (including frequent kernel uses).
     // Only do the decode + event-trigger work when the current process can
-    // match an armed !descmon event. The MTF pass-through below is intentionally
+    // match an armed !redpill event. The MTF pass-through below is intentionally
     // OUTSIDE this guard: the instruction has not executed yet and must be
     // single-stepped to completion for every process regardless of the filter.
     //

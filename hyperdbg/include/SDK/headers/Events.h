@@ -308,7 +308,7 @@ typedef struct _DEBUGGER_EVENT_OPTIONS
 //////////////////////////////////////////////////
 
 /**
- * @brief Maximum number of descriptor-table (!descmon) process-name filters
+ * @brief Maximum number of descriptor-table (!redpill) process-name filters
  * that VMX root can cache for the cheap pre-match. If more events than this
  * are armed, the cache "fails open" (matches every process), so correctness
  * is preserved and only the optimization is lost.
@@ -320,7 +320,7 @@ typedef struct _DEBUGGER_EVENT_OPTIONS
  * Mirrors the kernel DEBUGGER_EVENT ProcessName/LengthOfProcessName fields so
  * that the VMX-root pre-match in the #GP and descriptor-table-exit handlers can
  * skip the expensive guest-memory read + decode for processes that can never
- * match any armed !descmon event. The match logic must stay identical to
+ * match any armed !redpill event. The match logic must stay identical to
  * DebuggerTriggerEvents (case-insensitive, 15-byte cap, exact-tail check).
  */
 typedef struct _DESCRIPTOR_TABLE_NAME_FILTER

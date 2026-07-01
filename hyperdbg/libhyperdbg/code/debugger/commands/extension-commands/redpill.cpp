@@ -1,7 +1,7 @@
 /**
- * @file descmon.cpp
+ * @file redpill.cpp
  * @author HyperDbg contributors
- * @brief !descmon command
+ * @brief !redpill command
  * @details Native descriptor-table instruction monitor command.
  * @version 0.1
  * @date 2026-06-07
@@ -19,7 +19,7 @@
  * @return BOOLEAN TRUE if the token is a known instruction filter
  */
 static BOOLEAN
-CommandDescmonParseInstructionFilter(CommandToken Token, UINT64 * InstructionMask)
+CommandRedpillParseInstructionFilter(CommandToken Token, UINT64 * InstructionMask)
 {
     if (CompareLowerCaseStrings(Token, "all"))
     {
@@ -51,31 +51,31 @@ CommandDescmonParseInstructionFilter(CommandToken Token, UINT64 * InstructionMas
 }
 
 /**
- * @brief help of the !descmon command
+ * @brief help of the !redpill command
  *
  * @return VOID
  */
 VOID
-CommandDescmonHelp()
+CommandRedpillHelp()
 {
-    ShowMessages("!descmon : monitors execution of descriptor-table instructions.\n\n");
+    ShowMessages("!redpill : monitors execution of descriptor-table instructions.\n\n");
 
-    ShowMessages("syntax : \t!descmon [all|sidt|sgdt|sldt|str] [pid ProcessId (hex)] [name ImageFileName (string)] [core CoreId (hex)] "
+    ShowMessages("syntax : \t!redpill [all|sidt|sgdt|sldt|str] [pid ProcessId (hex)] [name ImageFileName (string)] [core CoreId (hex)] "
                  "[imm IsImmediate (yesno)] [sc EnableShortCircuiting (onoff)] [stage CallingStage (prepostall)] "
                  "[buffer PreAllocatedBuffer (hex)] [script { Script (string) }] [asm condition { Condition (assembly/hex) }] "
                  "[asm code { Code (assembly/hex) }] [output {OutputName (string)}]\n");
 
     ShowMessages("\n");
-    ShowMessages("\t\te.g : !descmon\n");
-    ShowMessages("\t\te.g : !descmon all\n");
-    ShowMessages("\t\te.g : !descmon sidt pid 400\n");
-    ShowMessages("\t\te.g : !descmon sgdt core 2 pid 400\n");
-    ShowMessages("\t\te.g : !descmon script { printf(\"descriptor-table instruction mask: %%llx\\n\", $context); }\n");
-    ShowMessages("\t\te.g : !descmon asm code { nop; nop; nop }\n");
+    ShowMessages("\t\te.g : !redpill\n");
+    ShowMessages("\t\te.g : !redpill all\n");
+    ShowMessages("\t\te.g : !redpill sidt pid 400\n");
+    ShowMessages("\t\te.g : !redpill sgdt core 2 pid 400\n");
+    ShowMessages("\t\te.g : !redpill script { printf(\"descriptor-table instruction mask: %%llx\\n\", $context); }\n");
+    ShowMessages("\t\te.g : !redpill asm code { nop; nop; nop }\n");
 }
 
 /**
- * @brief handler of !descmon command
+ * @brief handler of !redpill command
  *
  * @param CommandTokens
  * @param Command
@@ -83,7 +83,7 @@ CommandDescmonHelp()
  * @return VOID
  */
 VOID
-CommandDescmon(vector<CommandToken> CommandTokens, string Command)
+CommandRedpill(vector<CommandToken> CommandTokens, string Command)
 {
     PDEBUGGER_GENERAL_EVENT_DETAIL     Event                 = NULL;
     PDEBUGGER_GENERAL_ACTION           ActionBreakToDebugger = NULL;
@@ -123,11 +123,11 @@ CommandDescmon(vector<CommandToken> CommandTokens, string Command)
     //
     for (auto Section : CommandTokens)
     {
-        if (CompareLowerCaseStrings(Section, "!descmon"))
+        if (CompareLowerCaseStrings(Section, "!redpill"))
         {
             continue;
         }
-        else if (!HasInstructionFilter && CommandDescmonParseInstructionFilter(Section, &InstructionMask))
+        else if (!HasInstructionFilter && CommandRedpillParseInstructionFilter(Section, &InstructionMask))
         {
             HasInstructionFilter = TRUE;
         }
@@ -136,7 +136,7 @@ CommandDescmon(vector<CommandToken> CommandTokens, string Command)
             ShowMessages("unknown parameter '%s'\n\n",
                          GetCaseSensitiveStringFromCommandToken(Section).c_str());
 
-            CommandDescmonHelp();
+            CommandRedpillHelp();
 
             FreeEventsAndActionsMemory(Event, ActionBreakToDebugger, ActionCustomCode, ActionScript);
             return;

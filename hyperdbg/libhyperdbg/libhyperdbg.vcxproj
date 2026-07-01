@@ -263,7 +263,7 @@
     <ClCompile Include="code\debugger\commands\extension-commands\epthook2.cpp" />
     <ClCompile Include="code\debugger\commands\extension-commands\exception.cpp" />
     <ClCompile Include="code\debugger\commands\extension-commands\hide.cpp" />
-    <ClCompile Include="code\debugger\commands\extension-commands\descmon.cpp" />
+    <ClCompile Include="code\debugger\commands\extension-commands\redpill.cpp" />
     <ClCompile Include="code\debugger\commands\extension-commands\interrupt.cpp" />
     <ClCompile Include="code\debugger\commands\extension-commands\ioin.cpp" />
     <ClCompile Include="code\debugger\commands\extension-commands\ioout.cpp" />

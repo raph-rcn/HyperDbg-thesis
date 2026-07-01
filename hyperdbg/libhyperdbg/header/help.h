@@ -61,7 +61,7 @@ VOID
 CommandMonitorHelp();
 
 VOID
-CommandDescmonHelp();
+CommandRedpillHelp();
 
 VOID
 CommandSyscallHelp();
