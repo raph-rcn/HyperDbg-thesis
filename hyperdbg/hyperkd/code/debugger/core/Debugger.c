@@ -240,11 +240,6 @@ DebuggerInitialize()
 VOID
 DebuggerUninitialize()
 {
-    ULONG                       ProcessorsCount;
-    PROCESSOR_DEBUGGING_STATE * CurrentDebuggerState = NULL;
-
-    ProcessorsCount = KeQueryActiveProcessorCount(0);
-
     //
     //  *** Disable, terminate and clear all the events ***
     //
@@ -295,9 +290,22 @@ DebuggerUninitialize()
     // Uninitialize NMI broadcasting mechanism
     //
     VmFuncVmxBroadcastUninitialize();
+}
+
+/**
+ * @brief Free debugger memory after VMX callbacks can no longer run
+ */
+VOID
+DebuggerUninitializeMemory()
+{
+    ULONG                       ProcessorsCount;
+    PROCESSOR_DEBUGGING_STATE * CurrentDebuggerState = NULL;
+
+    ProcessorsCount = KeQueryActiveProcessorCount(0);
 
     //
-    // Free g_Events
+    // VMX teardown callbacks inspect both the event store and per-core state.
+    // These allocations must outlive VmFuncUninitVmm().
     //
     GlobalEventsFreeMemory();
 

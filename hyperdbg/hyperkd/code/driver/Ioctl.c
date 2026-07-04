@@ -156,6 +156,12 @@ DrvDispatchIoControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
             //
             VmFuncUninitVmm();
 
+            //
+            // VMX teardown queries debugger resources through callbacks. Free
+            // debugger-owned memory only after those callbacks can no longer run.
+            //
+            DebuggerUninitializeMemory();
+
             Status = STATUS_SUCCESS;
 
             break;

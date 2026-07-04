@@ -202,6 +202,9 @@ DebuggerInitialize();
 VOID
 DebuggerUninitialize();
 
+VOID
+DebuggerUninitializeMemory();
+
 PDEBUGGER_EVENT
 DebuggerCreateEvent(BOOLEAN                           Enabled,
                     UINT32                            CoreId,
